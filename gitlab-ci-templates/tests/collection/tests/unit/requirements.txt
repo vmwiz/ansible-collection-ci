@@ -1,0 +1,3 @@
+pytest-mock
+# absente de default-test-container : sans --pypi-endpoint, ce test echoue en airgap
+cowsay

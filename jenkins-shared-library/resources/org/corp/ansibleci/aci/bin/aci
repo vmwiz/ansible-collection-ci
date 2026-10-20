@@ -15,6 +15,20 @@ case $cmd in
 esac
 [ -f "$ACI_LIB/cmd/$cmd.sh" ] || die "commande inconnue '$cmd' (aci help)"
 log "aci $ACI_VERSION : $cmd"
+# Composant GitLab / image : version de scripts attendue (meme majeure exigee, ecart mineur signale)
+if [ -n "${ACI_EXPECTED_VERSION:-}" ] && [ "$ACI_EXPECTED_VERSION" != "$ACI_VERSION" ]; then
+  [ "${ACI_EXPECTED_VERSION%%.*}" = "${ACI_VERSION%%.*}" ] ||
+    die "scripts aci $ACI_VERSION dans l'image, le modele attend $ACI_EXPECTED_VERSION (majeure differente) : changer runner-image"
+  warn "scripts aci $ACI_VERSION (le modele attend $ACI_EXPECTED_VERSION)"
+fi
+# Matrice derivee des EE (GitLab : artefact du job d'introspection) -> version exacte et Python de l'EE
+if [ -n "${ACI_EE_MATRIX:-}" ] && [ -f "$ACI_EE_MATRIX" ] && [ -n "${ACI_CORE:-}" ]; then
+  read -r _ ee_py ee_pin _ < <(awk -v c="$ACI_CORE" '$1 == c' "$ACI_EE_MATRIX") || true
+  if [ -n "${ee_pin:-}" ]; then
+    export ACI_CORE_PIN=${ACI_CORE_PIN:-$ee_pin} ACI_PYTHON=${ACI_PYTHON:-$ee_py}
+    log "EE cible : ansible-core $ACI_CORE_PIN, Python $ACI_PYTHON"
+  fi
+fi
 # Pre-versions : ACI_PRERELEASE_EXIT_CODE (ex. 3, avec allow_failure:exit_codes dans GitLab) remplace le
 # code d'echec d'une serie listee dans ACI_PRERELEASE -> job "en echec autorise" au lieu d'echoue.
 aci_on_exit() {

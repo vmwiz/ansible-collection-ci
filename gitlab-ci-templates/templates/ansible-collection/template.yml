@@ -1,0 +1,419 @@
+# Composant GitLab CI/CD "ansible-collection" - ansible-ci 1.0.0
+# Pipeline de test/validation d'une collection Ansible (airgap, Nexus, AAP 2.6), memes etapes et memes
+# scripts (`aci`, installes dans l'image runner sous /opt/ansible-ci) que la bibliotheque Jenkins.
+# GitLab >= 17.0 (composants et inputs GA). Utilisation : voir README.md / GUIDE-UTILISATEUR.md.
+#   include:
+#     - component: $CI_SERVER_FQDN/ci/ansible-collection-ci/ansible-collection@1
+# Secrets (variables CI/CD masquees, jamais des inputs) : ACI_GALAXY_TOKEN (publication, variable protegee),
+# SPOTTER_TOKEN (Spotter prive).
+spec:
+  inputs:
+    # ---- etapes GitLab (stages par defaut de GitLab : build, test, deploy) ----
+    stage-static:
+      default: build
+      description: Stage des controles statiques (lint, docs, build, certification, securite...).
+    stage-test:
+      default: test
+      description: Stage ansible-test (sanity, units, integration) et molecule.
+    stage-publish:
+      default: deploy
+      description: Stage de publication (sur tag).
+    # ---- images et runners ----
+    runner-image:
+      default: nexus.corp.local:8443/ci/ansible-collection-runner:2026.10
+      description: Image runner (contient /opt/ansible-ci/bin/aci, Python 3.12 + 3.14). Son tag fige les scripts.
+    runner-tags:
+      type: array
+      default: [ansible-runner]
+      description: Tags du runner Kubernetes/OpenShift (pods restricted-v2, sans moteur de conteneurs).
+    builder-tags:
+      type: array
+      default: [ansible-builder]
+      description: Tags du runner shell de la VM ansible-builder (podman, runner shell) - mode docker, integration, molecule, EE.
+    aci-path:
+      default: /opt/ansible-ci/bin/aci
+      description: Chemin des scripts aci dans l'image runner et sur la VM ansible-builder.
+    # ---- matrice ansible-core (AAP 2.6 = 2.16 + 2.18, EE Python 3.12) ----
+    ansible-core-versions:
+      type: array
+      default: ['2.16', '2.18']
+      description: Series testees, entre quotes. Avec target-ees, doit lister exactement les series des EE.
+    ansible-core-optional:
+      default: ''
+      regex: ^[0-9. a-z]*$
+      description: Series en plus, non bloquantes, separees par des espaces (ex. "2.20" pour AAP 2.7).
+    ansible-core-prerelease:
+      default: ''
+      regex: ^[0-9. a-z]*$
+      description: Series de ansible-core-versions en pre-version (rc), echec non bloquant (code 3).
+    ansible-core-default:
+      default: ''
+      regex: ^([0-9]+\.[0-9]+)?$
+      description: Serie des etapes non matricielles (defaut - derniere serie non pre-version).
+    target-ees:
+      default: ''
+      description: Images EE cibles separees par des espaces ; introspection (fail-early) et version exacte par serie.
+    # ---- etapes ----
+    lint: {type: boolean, default: true, description: 'yamllint + ansible-lint + antsibull-changelog lint'}
+    docs: {type: boolean, default: true, description: 'antsibull-docs lint-collection-docs'}
+    build: {type: boolean, default: true, description: 'ansible-galaxy collection build'}
+    galaxy-importer: {type: boolean, default: true, description: 'galaxy-importer sur le tarball (exige build)'}
+    security-scan: {type: boolean, default: true, description: 'ansible-security-scanner'}
+    certification: {type: boolean, default: true, description: 'Controles certification Red Hat (partner-certification-checker 6.0.0)'}
+    certification-sanity: {type: boolean, default: true, description: 'Sanity py3.12 sur stable-2.16/2.18/2.20 non couvertes par la matrice'}
+    changelog-check: {type: boolean, default: true, description: 'Fragment changelog obligatoire sur MR'}
+    changelog-skip-token: {default: skip-changelog, description: 'Label ou mot du titre de MR qui exempte du fragment'}
+    sanity: {type: boolean, default: true}
+    units: {type: boolean, default: true}
+    integration: {type: boolean, default: false, description: 'ansible-test integration --docker (VM ansible-builder)'}
+    molecule: {type: boolean, default: false, description: 'molecule test (VM ansible-builder)'}
+    spotter: {type: boolean, default: false, description: 'Steampunk Spotter (instance privee, spotter-endpoint obligatoire)'}
+    ee-tests: {type: boolean, default: false, description: 'POC non teste - units dans les EE de target-ees'}
+    publish: {type: boolean, default: true, description: 'Publication sur tag vers Nexus (ACI_GALAXY_TOKEN)'}
+    # ---- ansible-test ----
+    test-mode:
+      default: auto
+      options: [auto, venv, docker]
+      description: auto = docker sur tag, planification et branche par defaut ; venv sinon.
+    sanity-args: {default: '', description: 'Arguments ansible-test sanity supplementaires'}
+    units-args: {default: '', description: 'Arguments ansible-test units supplementaires'}
+    integration-args: {default: '', description: 'Arguments ansible-test integration supplementaires'}
+    integration-images:
+      type: array
+      default: [default]
+      description: Images ansible-test --docker de l'integration (une job par image).
+    docker-network: {default: '', description: 'ansible-test --docker-network'}
+    coverage: {type: boolean, default: false}
+    molecule-images: {default: 'ubuntu2404 fedora43', description: 'Images molecule separees par des espaces'}
+    # ---- Nexus / Galaxy ----
+    pip-index-url: {default: '', description: 'Vide = /etc/pip.conf de l image (seul lu par ansible-test --venv)'}
+    pypi-endpoint: {default: 'https://nexus.corp.local/repository/pypi-group/simple', description: 'Index PyPI des conteneurs ansible-test'}
+    image-mirror: {default: 'nexus.corp.local:8444', description: 'Miroir des images quay.io/ansible'}
+    galaxy-server-url: {default: 'https://nexus.corp.local/repository/ansible-group/'}
+    galaxy-publish-url: {default: 'https://nexus.corp.local/repository/ansible-hosted/'}
+    # ---- scanners ----
+    security-fail-on: {default: high, options: [high, critical, none]}
+    spotter-endpoint: {default: '', description: 'URL API de l instance Spotter privee'}
+    spotter-allow-failure: {type: boolean, default: true}
+    spotter-ansible-version: {default: '2.20'}
+    spotter-display-level: {default: error, options: [hint, warning, error]}
+---
+.aci-base:
+  image: $[[ inputs.runner-image ]]
+  tags: $[[ inputs.runner-tags ]]
+  interruptible: true
+  variables:
+    ACI: $[[ inputs.aci-path ]]
+    ACI_EXPECTED_VERSION: "1.0.0"
+    # prefixe "series" : un input seul serait interpole comme TABLEAU (refuse dans variables)
+    ACI_CORE_VERSIONS: "series $[[ inputs.ansible-core-versions ]]"   # sans les optionnelles (serie par defaut)
+    ACI_PRERELEASE: "$[[ inputs.ansible-core-prerelease ]]"
+    ACI_CORE_DEFAULT: "$[[ inputs.ansible-core-default ]]"
+    ACI_PRERELEASE_EXIT_CODE: "3"
+    ACI_PIP_INDEX_URL: "$[[ inputs.pip-index-url ]]"
+    ACI_PYPI_ENDPOINT: "$[[ inputs.pypi-endpoint ]]"
+    ACI_IMAGE_MIRROR: "$[[ inputs.image-mirror ]]"
+    ACI_GALAXY_URL: "$[[ inputs.galaxy-server-url ]]"
+    ACI_GALAXY_PUBLISH_URL: "$[[ inputs.galaxy-publish-url ]]"
+    ACI_SANITY_ARGS: "$[[ inputs.sanity-args ]]"
+    ACI_UNITS_ARGS: "$[[ inputs.units-args ]]"
+    ACI_INTEGRATION_ARGS: "$[[ inputs.integration-args ]]"
+    ACI_DOCKER_NETWORK: "$[[ inputs.docker-network ]]"
+    ACI_COVERAGE: "$[[ inputs.coverage ]]"
+    ACI_EE_MATRIX: reports/ee/matrix.txt
+  # Pas de `cache:` GitLab : il impose un chemin DANS le projet, que lint/sanity analyseraient (constate
+  # sur le banc). Les venvs vont dans ~/.cache/ansible-ci ; pour les conserver entre jobs, monter un
+  # volume persistant a cet endroit dans la config du runner Kubernetes (voir README.md).
+  artifacts:
+    when: always
+    expire_in: 2 weeks
+    paths: [reports/]
+    exclude: [reports/**/.tmp/**]
+
+.aci-builder:
+  extends: .aci-base
+  tags: $[[ inputs.builder-tags ]]   # VM persistante : ~/.cache/ansible-ci y reste d'un job a l'autre
+
+# Les jobs de test attendent l'introspection des EE si elle existe (sinon demarrent tout de suite).
+.aci-needs-ee:
+  needs:
+    - job: aci-ee-introspect
+      optional: true
+
+# ---------------------------------------------------------------------------------------------- .pre
+aci-ee-introspect:
+  extends: .aci-builder
+  stage: .pre
+  variables:
+    ACI_EE_EXPECT_CORES: "series $[[ inputs.ansible-core-versions ]]"
+  script:
+    - $ACI ee-introspect $[[ inputs.target-ees ]]
+  artifacts:
+    paths: [reports/ee/]
+  rules:
+    - if: '"$[[ inputs.target-ees ]]" != ""'
+
+# ---------------------------------------------------------------------------------------- statiques
+aci-changelog:
+  extends: .aci-base
+  stage: $[[ inputs.stage-static ]]
+  needs: []
+  variables:
+    GIT_DEPTH: "0"
+    ACI_CHANGELOG_SKIP: $[[ inputs.changelog-skip-token ]]
+  script:
+    - $ACI changelog-check
+  rules:
+    - if: '"$[[ inputs.changelog-check ]]" == "true" && $CI_MERGE_REQUEST_IID'
+
+aci-certification:
+  extends: .aci-base
+  stage: $[[ inputs.stage-static ]]
+  needs: []
+  script:
+    - $ACI certification
+    - $ACI certification sanity-cores > reports/certification/sanity-cores.txt
+  rules:
+    - if: '"$[[ inputs.certification ]]" == "true"'
+
+aci-lint:
+  extends: .aci-base
+  stage: $[[ inputs.stage-static ]]
+  needs: []
+  script:
+    - $ACI lint
+  rules:
+    - if: '"$[[ inputs.lint ]]" == "true"'
+
+aci-docs:
+  extends: .aci-base
+  stage: $[[ inputs.stage-static ]]
+  needs: []
+  script:
+    - $ACI docs
+  rules:
+    - if: '"$[[ inputs.docs ]]" == "true"'
+
+aci-build:
+  extends: .aci-base
+  stage: $[[ inputs.stage-static ]]
+  needs: []
+  script:
+    - $ACI build
+    - if [ "$[[ inputs.galaxy-importer ]]" = true ]; then $ACI importer; fi
+  artifacts:
+    paths: [dist/, reports/]
+  rules:
+    - if: '"$[[ inputs.build ]]" == "true"'
+
+aci-security:
+  extends: .aci-base
+  stage: $[[ inputs.stage-static ]]
+  needs: []
+  variables:
+    ACI_SECURITY_FAIL_ON: $[[ inputs.security-fail-on ]]
+  script:
+    - $ACI security-scan
+  artifacts:
+    reports:
+      junit: reports/security/*.xml
+  rules:
+    - if: '"$[[ inputs.security-scan ]]" == "true"'
+
+aci-spotter:
+  extends: .aci-base
+  stage: $[[ inputs.stage-static ]]
+  needs: []
+  allow_failure: $[[ inputs.spotter-allow-failure ]]
+  variables:
+    SPOTTER_ENDPOINT: $[[ inputs.spotter-endpoint ]]
+    ACI_SPOTTER_ANSIBLE_VERSION: "$[[ inputs.spotter-ansible-version ]]"
+    ACI_SPOTTER_DISPLAY_LEVEL: $[[ inputs.spotter-display-level ]]
+  script:
+    - $ACI spotter
+  artifacts:
+    reports:
+      junit: reports/spotter/spotter.xml
+  rules:
+    - if: '"$[[ inputs.spotter ]]" == "true"'
+
+# --------------------------------------------------------------------------------------- ansible-test
+# venv (pod) par defaut ; docker (VM ansible-builder, conteneurs ansible-test) si test-mode=docker,
+# ou en mode auto sur tag, pipeline planifie et branche par defaut.
+.aci-rules-venv:
+  rules:
+    - if: '"$[[ inputs.test-mode ]]" == "venv"'
+    - if: '"$[[ inputs.test-mode ]]" == "docker"'
+      when: never
+    - if: $CI_COMMIT_TAG || $CI_PIPELINE_SOURCE == "schedule" || $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: never
+    - when: on_success
+
+.aci-rules-docker:
+  rules:
+    - if: '"$[[ inputs.test-mode ]]" == "docker"'
+    - if: '"$[[ inputs.test-mode ]]" == "venv"'
+      when: never
+    - if: $CI_COMMIT_TAG || $CI_PIPELINE_SOURCE == "schedule" || $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+.aci-sanity:
+  extends: .aci-needs-ee
+  stage: $[[ inputs.stage-test ]]
+  parallel:
+    matrix:
+      - ACI_CORE: $[[ inputs.ansible-core-versions ]]
+  allow_failure:
+    exit_codes: [3]          # serie en pre-version (ansible-core-prerelease)
+  script:
+    - $ACI sanity
+  artifacts:
+    reports:
+      junit: reports/sanity-*/junit/*.xml
+
+.aci-units:
+  extends: .aci-needs-ee
+  stage: $[[ inputs.stage-test ]]
+  parallel:
+    matrix:
+      - ACI_CORE: $[[ inputs.ansible-core-versions ]]
+  allow_failure:
+    exit_codes: [3]
+  script:
+    - $ACI units
+  artifacts:
+    reports:
+      junit: reports/units-*/junit/*.xml
+
+aci-sanity-venv:
+  extends: [.aci-base, .aci-sanity]
+  variables: {ACI_TEST_MODE: venv}
+  rules:
+    - if: '"$[[ inputs.sanity ]]" != "true"'
+      when: never
+    - !reference [.aci-rules-venv, rules]
+
+aci-sanity-docker:
+  extends: [.aci-builder, .aci-sanity]
+  variables: {ACI_TEST_MODE: docker}
+  rules:
+    - if: '"$[[ inputs.sanity ]]" != "true"'
+      when: never
+    - !reference [.aci-rules-docker, rules]
+
+aci-units-venv:
+  extends: [.aci-base, .aci-units]
+  variables: {ACI_TEST_MODE: venv}
+  rules:
+    - if: '"$[[ inputs.units ]]" != "true"'
+      when: never
+    - !reference [.aci-rules-venv, rules]
+
+aci-units-docker:
+  extends: [.aci-builder, .aci-units]
+  variables: {ACI_TEST_MODE: docker}
+  rules:
+    - if: '"$[[ inputs.units ]]" != "true"'
+      when: never
+    - !reference [.aci-rules-docker, rules]
+
+# Series optionnelles (ex. 2.20 = AAP 2.7) : non bloquantes, en venv.
+aci-optional-cores:
+  extends: .aci-base
+  stage: $[[ inputs.stage-test ]]
+  needs: []
+  allow_failure: true
+  variables: {ACI_TEST_MODE: venv}
+  script:
+    - |
+      rc=0
+      for core in $[[ inputs.ansible-core-optional ]]; do
+        if [ "$[[ inputs.sanity ]]" = true ]; then ACI_CORE=$core $ACI sanity || rc=1; fi
+        if [ "$[[ inputs.units ]]" = true ]; then ACI_CORE=$core $ACI units || rc=1; fi
+      done
+      exit $rc
+  artifacts:
+    reports:
+      junit: reports/*-*/junit/*.xml
+  rules:
+    - if: '"$[[ inputs.ansible-core-optional ]]" != ""'
+
+# Sanity de certification (Python 3.12, stable-2.16/2.18/2.20 filtrees par requires_ansible) sur les
+# series que la matrice ne couvre pas deja en Python 3.12.
+aci-certification-sanity:
+  extends: .aci-base
+  stage: $[[ inputs.stage-test ]]
+  needs: []
+  variables: {ACI_TEST_MODE: venv, ACI_PYTHON: "3.12"}
+  script:
+    - |
+      # deja couverte = serie de la matrice dont le Python controleur choisi est 3.12
+      covered=" "
+      for core in $(echo '$[[ inputs.ansible-core-versions ]]' | grep -oE '[0-9]+\.[0-9]+|devel|milestone'); do
+        py=$(env -u ACI_PYTHON ACI_CORE="$core" $ACI info 2>/dev/null | awk '$1 == "python" {print $2}')
+        if [ "$py" = python3.12 ]; then covered="$covered$core "; fi
+      done
+      todo=""
+      for core in $($ACI certification sanity-cores); do
+        case "$covered" in *" $core "*) ;; *) todo="$todo $core" ;; esac
+      done
+      echo "sanity de certification a lancer :${todo:- aucune (deja couvertes par la matrice)}"
+      for core in $todo; do ACI_CORE=$core $ACI sanity; done
+  artifacts:
+    reports:
+      junit: reports/sanity-*/junit/*.xml
+  rules:
+    - if: '"$[[ inputs.certification ]]" == "true" && "$[[ inputs.certification-sanity ]]" == "true" && "$[[ inputs.sanity ]]" == "true"'
+
+aci-integration:
+  extends: .aci-builder
+  stage: $[[ inputs.stage-test ]]
+  needs: [{job: aci-ee-introspect, optional: true}]
+  variables: {ACI_TEST_MODE: docker}
+  parallel:
+    matrix:
+      - ACI_INTEGRATION_IMAGE: $[[ inputs.integration-images ]]
+  script:
+    - $ACI integration
+  artifacts:
+    reports:
+      junit: reports/integration-*/junit/*.xml
+  rules:
+    - if: '"$[[ inputs.integration ]]" == "true"'
+
+aci-molecule:
+  extends: .aci-builder
+  stage: $[[ inputs.stage-test ]]
+  needs: []
+  variables:
+    ACI_MOLECULE_IMAGES: $[[ inputs.molecule-images ]]
+  script:
+    - $ACI prime-images
+    - $ACI molecule
+  rules:
+    - if: '"$[[ inputs.molecule ]]" == "true"'
+
+# POC NON TESTE (pas d'acces a registry.redhat.io sur le banc) : units dans chaque EE cible.
+aci-ee-units:
+  extends: .aci-builder
+  stage: $[[ inputs.stage-test ]]
+  needs: [aci-ee-introspect]
+  allow_failure: true
+  script:
+    - for image in $[[ inputs.target-ees ]]; do $ACI ee-units "$image"; done
+  artifacts:
+    reports:
+      junit: reports/ee-units-*/junit/*.xml
+  rules:
+    - if: '"$[[ inputs.ee-tests ]]" == "true" && "$[[ inputs.target-ees ]]" != ""'
+
+# ---------------------------------------------------------------------------------------- publication
+aci-publish:
+  extends: .aci-base
+  stage: $[[ inputs.stage-publish ]]
+  dependencies: [aci-build]   # pas de needs : attend la reussite de TOUS les stages precedents
+  script:
+    - $ACI publish
+  artifacts:
+    paths: [dist/]
+  rules:
+    - if: '"$[[ inputs.publish ]]" == "true" && "$[[ inputs.build ]]" == "true" && $CI_COMMIT_TAG'

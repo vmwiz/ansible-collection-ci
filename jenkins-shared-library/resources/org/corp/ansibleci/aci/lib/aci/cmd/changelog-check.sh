@@ -14,6 +14,9 @@ main() {
     *"$skip"*) warn "exemption '$skip' (etiquette ou titre) : pas de fragment exige"; return 0 ;;
   esac
   cd "$ACI_SRC" || die "ACI_SRC introuvable"
+  # checkout fait par un autre UID (pod GitLab, conteneur) : "dubious ownership" -> safe.directory
+  # en configuration de ligne de commande (portee protegee, respectee par git), sans toucher ~/.gitconfig
+  git() { command git -c safe.directory="$ACI_SRC" "$@"; }
   git rev-parse --verify -q "origin/$target" >/dev/null ||
     run git fetch --no-tags -q origin "+refs/heads/$target:refs/remotes/origin/$target" ||
     die "branche cible origin/$target introuvable (clone superficiel ? autoriser le fetch de la branche cible)"

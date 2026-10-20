@@ -1,0 +1,37 @@
+# Pipeline du PROJET COMPOSANT (ci/ansible-collection-ci) : valide le modele, l'essaie sur la collection
+# d'exemple, publie la version dans le catalogue CI/CD sur tag (x.y.z).
+stages: [validate, test, release]
+
+validate:
+  stage: validate
+  image: nexus.corp.local:8443/ci/ansible-collection-runner:2026.10   # PyYAML + check-jsonschema (voir README)
+  tags: [ansible-runner]
+  variables:
+    GITLAB_CI_SCHEMA: tests/gitlab-ci-schema.json   # copie du schema officiel, mise a jour avec GitLab
+  script:
+    - /opt/ansible-ci/bin/python -m pip install -q check-jsonschema
+    - PATH=/opt/ansible-ci/bin:$PATH tests/validate.sh "$GITLAB_CI_SCHEMA"
+
+# Essai reel du composant a la version du commit, sur la collection d'exemple (copie dans tests/collection)
+include:
+  - component: $CI_SERVER_FQDN/$CI_PROJECT_PATH/ansible-collection@$CI_COMMIT_SHA
+    inputs:
+      stage-static: test
+      stage-test: test
+      publish: false
+
+variables:   # la collection d'essai est dans un sous-dossier ; rapports et tarball restent a la racine
+  ACI_SRC: $CI_PROJECT_DIR/tests/collection
+  ACI_REPORTS: $CI_PROJECT_DIR/reports
+  ACI_DIST: $CI_PROJECT_DIR/dist
+
+release:
+  stage: release
+  image: nexus.corp.local:8443/gitlab-org/cli:latest   # PLACEHOLDER : miroir Nexus de l'image glab
+  tags: [ansible-runner]
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+$/
+  script: echo "Publication de $CI_COMMIT_TAG dans le catalogue CI/CD"
+  release:
+    tag_name: $CI_COMMIT_TAG
+    description: "Voir CHANGELOG.md"

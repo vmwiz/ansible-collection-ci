@@ -19,4 +19,12 @@ main() {
   python "$ACI_PY/ee_matrix.py" "$work" "$ACI_PYTHON_MAP" "$ACI_SRC" > "$out/matrix.txt" \
     || die "EE incompatibles avec la collection (voir ci-dessus)"
   log "matrice derivee des EE :"; sed 's/^/    /' "$out/matrix.txt" >&2
+  # GitLab (matrice statique) : ACI_EE_EXPECT_CORES = series de la matrice ; elles doivent etre
+  # exactement celles des EE, sinon on indique la valeur a mettre dans l'input ansible-core-versions.
+  if [ -n "${ACI_EE_EXPECT_CORES:-}" ]; then
+    local want got
+    want=$(echo "$ACI_EE_EXPECT_CORES" | grep -oE '[0-9]+\.[0-9]+' | sort -uV | xargs)
+    got=$(awk '{print $1}' "$out/matrix.txt" | sort -uV | xargs)
+    [ "$want" = "$got" ] || die "matrice ($want) differente des series des EE ($got) : ansible-core-versions: [\"${got// /\", \"}\"]"
+  fi
 }

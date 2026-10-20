@@ -1,7 +1,8 @@
 # Extrait de /etc/gitlab-runner/config.toml - runners dedies aux collections Ansible (airgap).
 # Deux runners, choisis par les "tags" des jobs dans .gitlab-ci.yml :
-#   tag "openshift"       -> executor kubernetes (pods restreints, aucun moteur de conteneurs)
-#   tag "ansible-builder" -> executor shell sur la VM ansible-builder (podman rootless)
+#   tag "ansible-runner"  -> executor kubernetes (pods restreints, aucun moteur de conteneurs)
+#   tag "ansible-builder" -> executor shell sur la VM ansible-builder (podman rootless, /opt/ansible-ci/bin/aci)
+# (tags par defaut des inputs runner-tags / builder-tags du composant gitlab-ci-templates)
 # Sur OpenShift, on peut aussi deployer le runner via l'operateur certifie "GitLab Runner"
 # (meme section [runners.kubernetes] dans la ConfigMap de configuration).
 
@@ -31,6 +32,11 @@ concurrent = 20
     # Pas de runAsUser : OpenShift injecte un UID aleatoire de la plage du namespace (GID 0).
     [runners.kubernetes.pod_security_context]
       run_as_non_root = true
+    # Optionnel : cache persistant des venvs aci (sinon recrees a chaque job depuis Nexus, ~30-60 s).
+    # PVC RWX (aci verrouille ses venvs par flock) ; ne PAS utiliser le `cache:` GitLab (chemin dans le projet).
+    # [[runners.kubernetes.volumes.pvc]]
+    #   name = "ansible-ci-cache"
+    #   mount_path = "/home/ci/.cache/ansible-ci"
 
 # ---------------------------------------------------------------------------------------------
 # 2) Executor shell sur la VM "ansible-builder" (podman rootless)
@@ -43,7 +49,7 @@ concurrent = 20
   # Les jobs tournent sous l'utilisateur du service (gitlab-runner) : il lui faut des plages
   # /etc/subuid + /etc/subgid, "loginctl enable-linger gitlab-runner" et XDG_RUNTIME_DIR, sinon
   # podman rootless ne trouve pas son repertoire d'execution (pas de session logind via su).
-  environment = ["XDG_RUNTIME_DIR=/run/user/<UID-gitlab-runner>", "ANSIBLE_TEST_PREFER_PODMAN=1", "CONTAINER_ENGINE=podman"]
+  environment = ["XDG_RUNTIME_DIR=/run/user/<UID-gitlab-runner>", "ANSIBLE_TEST_PREFER_PODMAN=1", "ACI_CONTAINER_ENGINE=podman"]
   limit = 4
 
 # ---------------------------------------------------------------------------------------------

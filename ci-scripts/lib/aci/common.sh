@@ -36,7 +36,8 @@ aci_map_line() { awk -v c="$1" '$1 == c' "$ACI_PYTHON_MAP"; }
 # ACI_CORE_VERSIONS : series de la matrice ("2.20 2.21" ou '["2.20", "2.21"]', forme d'un input GitLab
 # de type array insere dans une chaine) ; a defaut, toutes les series de la table.
 aci_core_versions() {
-  if [ -n "${ACI_CORE_VERSIONS:-}" ]; then echo "$ACI_CORE_VERSIONS" | tr -d '[]",' | xargs; return; fi
+  # tolere toute decoration autour des series (ex. 'series ["2.16", "2.18"]' produit par un input GitLab)
+  if [ -n "${ACI_CORE_VERSIONS:-}" ]; then echo "$ACI_CORE_VERSIONS" | grep -oE '[0-9]+\.[0-9]+|devel|milestone' | xargs; return; fi
   echo "$ACI_CORE_VERSIONS_DEFAULT"
 }
 

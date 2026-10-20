@@ -4,6 +4,7 @@
 set -euo pipefail
 here=$(cd "$(dirname "$0")/../.." && pwd)
 engine=${ENGINE:-podman}
+# shellcheck disable=SC2016  # script execute dans le conteneur
 "$engine" run --rm --entrypoint sh -v "$here:/jsl:ro,z" -w /tmp "${JENKINS_IMAGE:-localhost/jk:test}" -c '
   set -e
   unzip -q -o /usr/share/jenkins/jenkins.war "WEB-INF/lib/groovy-all-*.jar" -d /tmp/w

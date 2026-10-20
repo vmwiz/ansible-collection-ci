@@ -1,0 +1,7 @@
+# Banc (pas de GitLab) : image runner locale, devpi derriere nexus.corp.local, EE simulees locales.
+inputs:
+  runner-image: localhost/ansible-collection-runner:ubi9-v4
+  ansible-core-optional: '2.20'
+  target-ees: localhost/fake-ee-minimal-rhel9:2.16 localhost/fake-ee-minimal-rhel9:2.18
+  test-mode: venv
+  pypi-endpoint: https://nexus.corp.local/root/pypi/+simple/

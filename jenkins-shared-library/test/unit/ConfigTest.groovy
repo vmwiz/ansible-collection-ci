@@ -97,4 +97,14 @@ check('targetEEs : exclusif, matrice derivee') {
     assert m.size() == 2 && m[0].pin == '2.16.19' && m[0].python == '3.12'
     assert Config.label(m[0]) == 'ansible-core 2.16.19 py3.12 (ee-minimal-rhel9:2.16)'
 }
+check('exemple complet du GUIDE-UTILISATEUR') {
+    def r = resolve([ansibleCoreVersions: ['2.16', '2.18'], ansibleCoreOptional: ['2.20'], integration: true,
+        integrationImages: ['default', 'ubuntu2404'], molecule: true, moleculeImages: ['ubuntu2404', 'fedora43'],
+        spotter: true, spotterEndpoint: 'https://spotter.corp.local/api', spotterBlocking: false, testMode: 'auto',
+        fullTestBranches: ['main', 'stable-1'], sanityArgs: '', coverage: false, securityFailOn: 'high',
+        changelogSkipToken: 'skip-changelog', timeoutMinutes: 120, extraEnv: [MY_TEST_ENDPOINT: 'https://api.corp.local']])
+    assert r.errors == [] : r.errors
+    def e = resolve([targetEEs: ['hub.corp.local/ansible-automation-platform-26/ee-minimal-rhel9:latest']])
+    assert e.errors == [] : e.errors
+}
 println "${n} tests OK"

@@ -1,0 +1,14 @@
+---
+# Cibles de test : conteneurs podman (rootless) bases sur les images ansible-test,
+# deja presentes localement apres `ci/prime_images.py ubuntu2404 fedora43` (miroir Nexus).
+all:
+  children:
+    molecule:
+      hosts:
+        molecule-ubuntu2404:
+          molecule_image: quay.io/ansible/ubuntu-test-container:24.04-v2.21-2
+        molecule-fedora43:
+          molecule_image: quay.io/ansible/fedora-test-container:43-v2.21-2
+      vars:
+        ansible_connection: containers.podman.podman
+        ansible_python_interpreter: auto_silent

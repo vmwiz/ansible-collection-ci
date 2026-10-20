@@ -9,8 +9,9 @@
     builder_ci_user: jenkins
     builder_subid_start: 100000
     builder_subid_count: 65536
-    # Pythons controleur ansible-test : 2.19 -> 3.11-3.13 ; 2.20/2.21 -> 3.12-3.14 ; 2.22 -> 3.13-3.15.
-    # RHEL 9.8 AppStream : python3.11, 3.12, 3.14 (pas 3.13). Le noxfile choisit par serie.
+    # Pythons controleur ansible-test : 2.16 -> 3.10-3.12 ; 2.18/2.19 -> 3.11-3.13 ; 2.20/2.21 -> 3.12-3.14 ;
+    # 2.22 -> 3.13-3.15. RHEL 9.8 AppStream : python3.11, 3.12, 3.14 (pas 3.13). AAP 2.6 (2.16/2.18) et la
+    # certification exigent 3.12. `aci` choisit par serie (share/aci/python-map.txt).
     builder_python: python3.14
     builder_extra_pythons:
       - python3.12
@@ -22,13 +23,22 @@
       - fuse-overlayfs
       - git-core
       - openssh-clients
+      - tar
+      - gzip
+      - findutils
+      - rsync
+      - jq
+      - which
+      - diffutils
       - "{{ builder_python }}"
       - "{{ builder_python }}-pip"
     builder_ca_src: files/corp-ca.crt
     builder_pip_index: https://nexus.corp.local/repository/pypi-group/simple
     builder_venv: /opt/ansible-ci
-    builder_nox_version: "2026.8.17"
     builder_pyyaml_version: "6.0.3"
+    # Scripts aci : MEME version que l'image runner / la bibliotheque Jenkins / le composant GitLab.
+    # Chemin sur le controleur Ansible (checkout du tag v1.x.y du depot ansible-collection-ci).
+    builder_aci_src: "{{ playbook_dir }}/../../ci-scripts"
   tasks:
     - name: Installer les paquets (depots dnf via Nexus)
       ansible.builtin.dnf:
@@ -81,13 +91,28 @@
         cmd: "loginctl enable-linger {{ builder_ci_user }}"
         creates: "/var/lib/systemd/linger/{{ builder_ci_user }}"
 
-    - name: Venv d'orchestration (nox) installe depuis le proxy PyPI
+    - name: Venv d'outillage des scripts aci (PyYAML) depuis le proxy PyPI
       ansible.builtin.pip:
         name:
-          - "nox=={{ builder_nox_version }}"
           - "PyYAML=={{ builder_pyyaml_version }}"
         virtualenv: "{{ builder_venv }}"
         virtualenv_command: "{{ builder_python }} -m venv"
+
+    - name: Installer les scripts aci comme dans l'image runner (/opt/ansible-ci)
+      ansible.builtin.copy:
+        src: "{{ builder_aci_src }}/{{ item }}"
+        dest: "{{ builder_venv }}/{{ item | dirname }}/"
+        mode: preserve
+      loop:
+        - VERSION
+        - bin/aci
+        - lib/aci
+        - share/aci
+
+    - name: Verifier les scripts aci
+      ansible.builtin.command:
+        cmd: "{{ builder_venv }}/bin/aci version"
+      changed_when: false
 
   handlers:
     - name: Mettre a jour le magasin de certificats

@@ -2,21 +2,21 @@
 
 | Fichier | Usage |
 |---|---|
-| `jenkins-agent-pod.yaml` | Modele de pod Jenkins (copie de `collection-files/ci/jenkins-agent-pod.yaml`), SCC `restricted-v2` |
+| `../../jenkins-shared-library/resources/org/corp/ansibleci/pod/runner-pod.yaml` | Modele de pod Jenkins (charge par la bibliotheque, images substituees), SCC `restricted-v2`, valide par `test/validate-pod.sh` |
 | `nested-podman-pod.poc.yaml` | **POC** podman imbrique (OCP >= 4.20, SCC `nested-container`) - non valide |
 
 ## Ce qui tourne dans un pod restreint (sans moteur de conteneurs)
 lint, docs, build, galaxy-importer, security-scan, spotter, `ansible-test sanity/units --venv`
-(`ANSIBLE_TEST_MODE=venv`). Valide en simulant OpenShift : UID arbitraire (54321 puis 1000680000, GID 0, absent de
+(`aci` en mode `venv`, `ACI_TEST_MODE=venv`). Valide en simulant OpenShift : UID arbitraire (54321 puis 1000680000, GID 0, absent de
 `/etc/passwd`), `--cap-drop ALL`, `no-new-privileges`, aucun socket.
 
 Prerequis airgap specifiques au mode venv :
 * ansible-test cree ses venvs sans pip puis execute `~/.ansible/test/cache/get_pip_<version>.py`
-  (sinon telecharge depuis `https://ci-files.testing.ansible.com/ansible-test/`) : le noxfile y depose
-  `ci/get_pip_offline.py` (`ensurepip` + pip a la version demandee depuis Nexus). Aucun depot raw necessaire ;
+  (sinon telecharge depuis `https://ci-files.testing.ansible.com/ansible-test/`) : `aci` y depose
+  `lib/aci/py/get_pip_offline.py` (`ensurepip` + pip a la version demandee depuis Nexus). Aucun depot raw necessaire ;
 * ansible-test --venv ne transmet pas `PIP_INDEX_URL` a ses venvs : c'est `/etc/pip.conf` de l'image de base
   (UBI 9 d'entreprise, voir `infra/runner-image/README.md`) qui pointe vers Nexus.
-* Valide en v3 avec l'image UBI 9 : UID 1000680000:0, `--cap-drop ALL`, reseau coupe sauf le faux Nexus.
+* Valide (v3 puis v4) avec l'image UBI 9 : UID 1000680000:0, `--cap-drop ALL`, reseau coupe sauf le faux Nexus.
 
 ## Ce qui ne peut PAS tourner dans un pod restreint
 `ansible-test --docker` (y compris integration) et Molecule : il faut un moteur de conteneurs.
