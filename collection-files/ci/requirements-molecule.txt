@@ -1,0 +1,3 @@
+# Molecule "ansible-native" : pas de molecule-plugins, les cibles sont creees par
+# extensions/molecule/default/create.yml avec la collection containers.podman.
+molecule

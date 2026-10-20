@@ -1,0 +1,8 @@
+# Outils installes dans le venv /opt/ansible-ci de l'image runner (versions figees, depuis le proxy PyPI Nexus).
+# Releves PyPI au 2026-10-20. Le reste de l'outillage (ansible-core, ansible-lint...) est installe
+# par nox dans des venvs de session, avec collection-files/ci/constraints.txt.
+nox==2026.8.17
+PyYAML==6.0.3
+# shellcheck : absent des depots UBI 9 (paquet ShellCheck uniquement dans EPEL 9).
+# shellcheck-py embarque le binaire officiel statique (roue manylinux) -> installable depuis Nexus.
+shellcheck-py==0.11.0.1

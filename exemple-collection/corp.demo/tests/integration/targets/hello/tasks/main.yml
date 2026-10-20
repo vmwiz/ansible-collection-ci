@@ -1,0 +1,9 @@
+---
+- name: Call module
+  corp.demo.hello:
+    name: ci
+  register: r
+
+- name: Check
+  ansible.builtin.assert:
+    that: r.msg == 'Hello ci'

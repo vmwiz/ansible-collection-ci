@@ -1,0 +1,21 @@
+---
+namespace: corp
+name: demo
+version: 1.0.0
+readme: README.md
+authors:
+  - coreOps <ops@corp.local>
+description: Demo collection for the airgapped CI pipeline
+license:
+  - GPL-3.0-or-later
+tags: [tools]
+dependencies: {}
+repository: https://gitlab.corp.local/coreops/corp.demo
+build_ignore:
+  - .nox
+  - ci
+  - dist
+  - reports
+  - noxfile.py
+  - Jenkinsfile
+  - .gitlab-ci.yml

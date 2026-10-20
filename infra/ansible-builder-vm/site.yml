@@ -1,0 +1,96 @@
+---
+# Preparation d'une VM "ansible-builder" (agent Jenkins / runner GitLab shell) avec podman rootless.
+# Cible : RHEL / Rocky / Alma 9-10 ou Fedora (dnf). Depots dnf et PyPI servis par Nexus.
+#   ansible-playbook -i inventaire site.yml -e builder_ci_user=jenkins
+- name: Preparer la VM ansible-builder
+  hosts: ansible_builder
+  become: true
+  vars:
+    builder_ci_user: jenkins
+    builder_subid_start: 100000
+    builder_subid_count: 65536
+    # Pythons controleur ansible-test : 2.19 -> 3.11-3.13 ; 2.20/2.21 -> 3.12-3.14 ; 2.22 -> 3.13-3.15.
+    # RHEL 9.8 AppStream : python3.11, 3.12, 3.14 (pas 3.13). Le noxfile choisit par serie.
+    builder_python: python3.14
+    builder_extra_pythons:
+      - python3.12
+    builder_packages:
+      - podman
+      - crun
+      - slirp4netns
+      - passt
+      - fuse-overlayfs
+      - git-core
+      - openssh-clients
+      - "{{ builder_python }}"
+      - "{{ builder_python }}-pip"
+    builder_ca_src: files/corp-ca.crt
+    builder_pip_index: https://nexus.corp.local/repository/pypi-group/simple
+    builder_venv: /opt/ansible-ci
+    builder_nox_version: "2026.8.17"
+    builder_pyyaml_version: "6.0.3"
+  tasks:
+    - name: Installer les paquets (depots dnf via Nexus)
+      ansible.builtin.dnf:
+        name: "{{ builder_packages + builder_extra_pythons + (builder_extra_pythons | map('regex_replace', '$', '-pip') | list) }}"
+        state: present
+
+    - name: Deposer l'AC interne
+      ansible.builtin.copy:
+        src: "{{ builder_ca_src }}"
+        dest: /etc/pki/ca-trust/source/anchors/corp-ca.crt
+        mode: "0644"
+      notify: Mettre a jour le magasin de certificats
+
+    - name: Configurer pip vers Nexus (fichier systeme)
+      ansible.builtin.copy:
+        dest: /etc/pip.conf
+        mode: "0644"
+        content: |
+          [global]
+          index-url = {{ builder_pip_index }}
+          cert = /etc/pki/tls/certs/ca-bundle.crt
+          timeout = 60
+          retries = 5
+
+    - name: Miroirs de registres pour podman (quay.io, docker.io, ghcr.io -> Nexus)
+      ansible.builtin.copy:
+        src: templates/registries-nexus.conf
+        dest: /etc/containers/registries.conf.d/50-nexus-mirrors.conf
+        mode: "0644"
+
+    - name: Creer l'utilisateur CI
+      ansible.builtin.user:
+        name: "{{ builder_ci_user }}"
+        shell: /bin/bash
+        create_home: true
+
+    - name: Plages d'UID/GID subordonnes pour podman rootless
+      ansible.builtin.lineinfile:
+        path: "{{ item }}"
+        regexp: "^{{ builder_ci_user }}:"
+        line: "{{ builder_ci_user }}:{{ builder_subid_start }}:{{ builder_subid_count }}"
+        create: true
+        mode: "0644"
+      loop:
+        - /etc/subuid
+        - /etc/subgid
+
+    - name: Session systemd persistante (XDG_RUNTIME_DIR + delegation cgroup v2 pour systemd dans les conteneurs)
+      ansible.builtin.command:
+        cmd: "loginctl enable-linger {{ builder_ci_user }}"
+        creates: "/var/lib/systemd/linger/{{ builder_ci_user }}"
+
+    - name: Venv d'orchestration (nox) installe depuis le proxy PyPI
+      ansible.builtin.pip:
+        name:
+          - "nox=={{ builder_nox_version }}"
+          - "PyYAML=={{ builder_pyyaml_version }}"
+        virtualenv: "{{ builder_venv }}"
+        virtualenv_command: "{{ builder_python }} -m venv"
+
+  handlers:
+    - name: Mettre a jour le magasin de certificats
+      ansible.builtin.command:
+        cmd: update-ca-trust
+      changed_when: true

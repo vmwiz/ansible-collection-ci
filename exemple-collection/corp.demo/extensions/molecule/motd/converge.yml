@@ -1,0 +1,10 @@
+---
+- name: Converge
+  hosts: molecule
+  gather_facts: false
+  tasks:
+    - name: Appliquer le role
+      ansible.builtin.include_role:
+        name: corp.demo.motd
+      vars:
+        motd_message: "Test Molecule"

@@ -1,0 +1,22 @@
+---
+- name: Verify
+  hosts: molecule
+  gather_facts: false
+  tasks:
+    - name: Lire /etc/motd
+      ansible.builtin.slurp:
+        src: /etc/motd
+      register: motd
+
+    - name: Verifier le contenu
+      ansible.builtin.assert:
+        that:
+          - (motd.content | b64decode) == "Test Molecule\n"
+
+    - name: Collecter l'etat des services (systemd est PID 1 dans la cible)
+      ansible.builtin.service_facts:
+
+    - name: Verifier que journald tourne
+      ansible.builtin.assert:
+        that:
+          - ansible_facts.services['systemd-journald.service'].state == 'running'

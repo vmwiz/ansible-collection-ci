@@ -1,0 +1,4 @@
+# Outils de la session `lint` (versions figees dans constraints.txt)
+yamllint
+ansible-lint
+antsibull-changelog

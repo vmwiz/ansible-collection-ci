@@ -1,0 +1,22 @@
+---
+- name: Creer les conteneurs de test
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    # ansible-security-scanner signale une "capability" ajoutee : faux positif (heuristique podman + systemd).
+    - name: Demarrer les conteneurs systemd (rootless)  # nosec: linux_cap_bpf_granted_to_container_or_service reason="faux positif"
+      containers.podman.podman_container:
+        name: "{{ item }}"
+        image: "{{ hostvars[item].molecule_image }}"
+        state: started
+        systemd: "always"
+        pull: never  # images deja tirees du Nexus par ci/prime_images.py
+      loop: "{{ groups['molecule'] }}"
+
+- name: Verifier que les cibles repondent
+  hosts: molecule
+  gather_facts: false
+  tasks:
+    - name: Attendre la connexion
+      ansible.builtin.wait_for_connection:
+        timeout: 60

@@ -1,0 +1,21 @@
+# Configuration yamllint par defaut (utilisee si le depot n'a pas de .yamllint)
+# Compatible avec les regles yamllint d'ansible-lint.
+extends: default
+rules:
+  line-length:
+    max: 160
+  truthy:
+    allowed-values: ["true", "false"]
+    check-keys: false
+  comments:
+    min-spaces-from-content: 1
+  comments-indentation: false
+  braces:
+    max-spaces-inside: 1
+  octal-values:
+    forbid-implicit-octal: true
+    forbid-explicit-octal: true
+  document-start: disable
+  indentation:
+    spaces: consistent
+    indent-sequences: consistent

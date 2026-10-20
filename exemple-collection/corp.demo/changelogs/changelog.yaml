@@ -1,0 +1,13 @@
+ancestor: null
+releases:
+  1.0.0:
+    changes:
+      minor_changes:
+      - hello - new module (https://gitlab.corp.local/coreops/corp.demo/-/merge_requests/1).
+    fragments:
+    - 1-hello.yml
+    modules:
+    - description: Say hello.
+      name: hello
+      namespace: ''
+    release_date: '2026-10-20'
