@@ -1,0 +1,5 @@
+ansibleLint(Map opts = [:]) - yamllint --strict + antsibull-changelog lint + ansible-lint --offline.
+Dependances Galaxy (galaxy.yml, tests/requirements.yml, extensions/molecule/requirements.yml) installees
+depuis galaxyServerUrl, hors du depot. A appeler dans un node, a la racine de la collection.
+Options : args (chaine ou liste, transmis a ansible-lint), core, et toute cle d'ansibleCollectionPipeline
+(galaxyServerUrl...). Exemple : ansibleLint(args: ['--profile', 'production'])

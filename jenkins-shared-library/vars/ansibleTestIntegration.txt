@@ -1,0 +1,5 @@
+ansibleTestIntegration(Map opts = [:]) - ansible-test integration --docker <image> (mode docker force).
+Agent avec moteur de conteneurs (label ansible-builder). Les images sont pre-tirees depuis imageMirror.
+  image     image ansible-test (defaut 'default'), ex. 'ubuntu2404'
+  core, args, integrationArgs, dockerNetwork
+JUnit : reports/integration-<serie>-<image>/junit/*.xml.

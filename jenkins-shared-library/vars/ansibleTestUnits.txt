@@ -1,0 +1,2 @@
+ansibleTestUnits(Map opts = [:]) - ansible-test units --requirements (tests/unit). Options comme
+ansibleTestSanity (core, testMode, args, unitsArgs). JUnit : reports/units-<serie>/junit/*.xml.

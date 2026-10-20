@@ -1,0 +1,11 @@
+# Versions figees des outils (mise a jour controlee, p.ex. via Renovate pointant sur Nexus).
+# Ne PAS figer ansible-core ici : la serie est choisie par session (matrice).
+# Releves PyPI au 2026-10-20.
+yamllint==1.38.0
+ansible-lint==26.10.1
+antsibull-changelog==0.35.2
+antsibull-docs==2.28.0
+galaxy-importer==0.4.44
+ansible-security-scanner==0.1.41
+steampunk-spotter==6.6.0
+molecule==26.10.0

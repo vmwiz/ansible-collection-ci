@@ -1,7 +1,7 @@
-# Outils installes dans le venv /opt/ansible-ci de l'image runner (versions figees, depuis le proxy PyPI Nexus).
-# Releves PyPI au 2026-10-20. Le reste de l'outillage (ansible-core, ansible-lint...) est installe
-# par nox dans des venvs de session, avec collection-files/ci/constraints.txt.
-nox==2026.8.17
+# Venv /opt/ansible-ci de l'image runner (versions figees, depuis le proxy PyPI Nexus). Releve 2026-10-20.
+# Le reste de l'outillage (ansible-core, ansible-lint...) est installe par `aci` dans des venvs en cache,
+# avec ci-scripts/share/aci/constraints.txt.
+# PyYAML : lecture de galaxy.yml par les scripts aci (lib/aci/py/galaxy_meta.py) avant tout venv.
 PyYAML==6.0.3
 # shellcheck : absent des depots UBI 9 (paquet ShellCheck uniquement dans EPEL 9).
 # shellcheck-py embarque le binaire officiel statique (roue manylinux) -> installable depuis Nexus.

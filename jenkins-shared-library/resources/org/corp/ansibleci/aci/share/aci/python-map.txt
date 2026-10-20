@@ -1,0 +1,14 @@
+# Series ansible-core supportees et Pythons CONTROLEUR acceptes par ansible-test, par ordre de preference.
+# Source : CONTROLLER_PYTHON_VERSIONS de test/lib/ansible_test/_util/target/common/constants.py
+# (branches stable-X.Y, releve 2026-10-20), coherent avec requires-python.
+# Fichier lu par `aci` (bash) ET par la Jenkins Shared Library (validation) : source unique.
+# serie     pythons (le premier present sur l'agent est retenu)
+# 2.16 / 2.18 = AAP 2.6 (EE en Python 3.12) : 3.12 en tete pour reproduire les EE.
+2.16        3.12 3.11 3.10
+2.18        3.12 3.13 3.11
+2.19        3.13 3.12 3.11
+2.20        3.14 3.13 3.12
+2.21        3.14 3.13 3.12
+2.22        3.15 3.14 3.13
+milestone   3.15 3.14 3.13
+devel       3.15 3.14 3.13

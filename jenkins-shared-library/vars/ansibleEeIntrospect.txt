@@ -1,0 +1,15 @@
+ansibleEeIntrospect(images: [...]) -> List - introspection des Execution Environments cibles (AAP).
+
+Pour chaque image : podman run --rm --network none --entrypoint ansible <image> --version, puis lecture de
+"ansible [core X.Y.Z]" et "python version = A.B". Renvoie une ligne par EE :
+    [core: '2.16', python: '3.12', pin: '2.16.19', image: '...']
+Echoue IMMEDIATEMENT (avant toute autre etape) si :
+  - la serie ansible-core de l'EE est inconnue de la table pythonMap ;
+  - le Python de l'EE est hors de la plage controleur de la serie ;
+  - la version ansible-core de l'EE ne satisfait pas requires_ansible (meta/runtime.yml).
+Rapport : reports/ee/matrix.txt. Doit s'executer sur un agent avec podman (ansible-builder) ; l'image doit
+etre accessible (miroir Nexus de registry.redhat.io ou Private Automation Hub).
+
+Exemple (scripte) :
+    node('ansible-builder') { withAnsibleCi { def rows = ansibleEeIntrospect(images: ['hub.corp.local/ee-minimal-rhel9:2.16']) } }
+Dans ansibleCollectionPipeline : parametre targetEEs (la matrice sanity/units est derivee des EE, avec pin exact).

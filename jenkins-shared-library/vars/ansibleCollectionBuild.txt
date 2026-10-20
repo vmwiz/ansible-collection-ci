@@ -1,0 +1,3 @@
+ansibleCollectionBuild(Map opts = [:]) - ansible-galaxy collection build -> dist/<ns>-<nom>-<version>.tar.gz.
+Pensez a exclure dist/ reports/ Jenkinsfile .gitlab-ci.yml via build_ignore dans galaxy.yml.
+Options : args, core.

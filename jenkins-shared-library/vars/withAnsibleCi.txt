@@ -1,0 +1,10 @@
+withAnsibleCi(Map config) { ... } - pipelines scriptes : valide une fois la configuration (memes cles et
+defauts qu'ansibleCollectionPipeline) et la rend disponible a toutes les etapes du bloc. Dans un node.
+Exemple :
+    node('ansible-runner') {
+        checkout scm
+        withAnsibleCi(galaxyServerUrl: 'https://nexus.corp.local/repository/ansible-group/') {
+            ansibleLint(); ansibleCollectionBuild()
+            withAnsibleCore('2.21') { ansibleTestSanity(testMode: 'venv') }
+        }
+    }

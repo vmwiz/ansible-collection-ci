@@ -1,0 +1,11 @@
+// Jenkinsfile du depot corp.demo sur le banc : seuls agentType/testMode/pypiEndpoint different de la prod
+// (pas de cluster OpenShift ni de VM podman sur le banc ; devpi tient lieu de Nexus PyPI).
+// Matrice par defaut = AAP 2.6 (2.16, 2.18) + 2.20 non bloquant (preparation AAP 2.7).
+@Library('ansible-ci@v1') _
+
+ansibleCollectionPipeline(
+    ansibleCoreOptional: ['2.20'],
+    agentType: 'label',
+    testMode: 'venv',
+    pypiEndpoint: 'https://nexus.corp.local/root/pypi/+simple/',
+)

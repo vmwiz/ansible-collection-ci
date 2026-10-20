@@ -1,0 +1,7 @@
+ansibleChangelogCheck(skipToken: 'skip-changelog') - fragment de changelog obligatoire sur une PR/MR.
+
+Actif seulement sur une PR (job multibranche : CHANGE_ID + CHANGE_TARGET ; sinon ACI_TARGET_BRANCH). Compare
+au merge-base de la branche cible : si des fichiers hors changelogs/, docs/, tests/, fichiers CI, README...
+changent, un changelogs/fragments/*.yml (ou .yaml) doit etre ajoute ; puis antsibull-changelog lint.
+Exemption : skipToken dans le titre de la PR (CHANGE_TITLE) ; sur GitLab, titre ou label de la MR.
+Dans ansibleCollectionPipeline : changelogCheck (true), changelogSkipToken ('skip-changelog').

@@ -1,0 +1,3 @@
+primeAnsibleTestImages(Map opts = [:]) - pre-tire depuis imageMirror les images ansible-test de la serie
+courante et les re-tague sous quay.io/... (ansible-test ne tire pas une image presente).
+  images  alias ansible-test (defaut ['default', 'utility']), ex. ['default', 'ubuntu2404']

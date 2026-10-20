@@ -1,0 +1,5 @@
+spotterScan(Map opts = [:]) - Steampunk Spotter vers l'instance PRIVEE.
+  spotterEndpoint   obligatoire (ex. 'https://spotter.corp.local/api') : sans lui la CLI vise le SaaS
+  credentialsId     credential "Secret text" du jeton (defaut spotterCredentialsId = 'spotter-api-token')
+  spotterCaCert, spotterAnsibleVersion ('2.20'), spotterDisplayLevel ('error')
+  exportOnly        true : genere reports/spotter/spotter-payload.json sans appel reseau

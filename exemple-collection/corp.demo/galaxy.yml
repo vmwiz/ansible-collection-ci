@@ -12,10 +12,7 @@ tags: [tools]
 dependencies: {}
 repository: https://gitlab.corp.local/coreops/corp.demo
 build_ignore:
-  - .nox
-  - ci
   - dist
   - reports
-  - noxfile.py
   - Jenkinsfile
   - .gitlab-ci.yml

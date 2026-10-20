@@ -1,0 +1,15 @@
+ansibleCertification(Map opts = [:]) - controles de la certification partenaire Red Hat (Automation Hub).
+
+Reproduit partner-certification-checker v6.0.0 ; versions figees dans UN fichier de la bibliotheque :
+resources/org/corp/ansibleci/aci/share/aci/certification.env (ACI_CERT_ENV pour le surcharger).
+  1. garde-fous : ignores sanity (tests/sanity/ignore-*.txt) limites a la liste autorisee par la regle
+     ansible-lint "sanity" (derogation explicite : commentaire "# aci-derogation: <motif>" -> avertissement) ;
+     .ansible-lint : profile production, aucune regle obligatoire en skip_list/warn_list, exclude_paths
+     ne masquant pas plugins/ roles/ extensions/ ; requires_ansible >= serie supportee (2.16/2.18/2.20).
+  2. galaxy-importer 0.4.39, Python 3.12 + ansible-core 2.16.19, CHECK_REQUIRED_TAGS=True, RUN_ANSIBLE_LINT=False.
+  3. ansible-lint 26.4.0 --profile=production.
+Rapports : reports/certification/ (guards.txt, galaxy-importer.log, importer_result.json).
+
+ansibleCertification(sanityCores: true) -> List : series sanity de certification (stable-2.16/2.18/2.20)
+filtrees par requires_ansible ; ansibleCollectionPipeline lance la sanity Python 3.12 sur celles qui ne sont
+pas deja couvertes par la matrice (parametre certificationSanity).

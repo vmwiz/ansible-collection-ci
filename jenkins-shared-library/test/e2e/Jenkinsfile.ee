@@ -1,0 +1,9 @@
+// Matrice derivee des EE cibles (banc : EE simulees par un faux "podman", voir podman-shim.sh).
+@Library('ansible-ci@v1') _
+
+ansibleCollectionPipeline(
+    targetEEs: ['hub.corp.local/ansible-automation-platform-26/ee-minimal-rhel9:2.16',
+                'hub.corp.local/ansible-automation-platform/ee-minimal-rhel9:2.18'],
+    agentType: 'label', builderLabel: 'ansible-runner', testMode: 'venv',
+    lint: false, docs: false, securityScan: false, certification: false, units: false,
+)

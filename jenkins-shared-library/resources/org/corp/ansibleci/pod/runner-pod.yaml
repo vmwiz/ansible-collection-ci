@@ -1,0 +1,51 @@
+# Pod d'agent (plugin Kubernetes) pour les etapes sans moteur de conteneurs : lint, docs, build,
+# galaxy-importer, securite, Spotter, sanity/units en mode venv.
+# Compatible SCC OpenShift "restricted-v2" : pas de runAsUser fixe (UID aleatoire du namespace, GID 0),
+# non-root, pas d'escalade, capabilities supprimees, seccomp RuntimeDefault, aucun moteur de conteneurs.
+# @RUNNER_IMAGE@ / @JNLP_IMAGE@ sont remplaces par runnerImage / jnlpImage (parametres du pipeline) ;
+# podTemplateYaml remplace entierement ce fichier (le conteneur des etapes doit s'appeler "runner").
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    app.kubernetes.io/part-of: ansible-collection-ci
+spec:
+  securityContext:
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: jnlp
+      image: "@JNLP_IMAGE@"
+      resources:
+        requests: {cpu: 100m, memory: 256Mi}
+        limits: {memory: 512Mi}
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ["ALL"]
+    - name: runner
+      image: "@RUNNER_IMAGE@"
+      imagePullPolicy: IfNotPresent
+      command: ["sleep"]
+      args: ["infinity"]
+      env:
+        - name: HOME
+          value: /home/ci
+        - name: TMPDIR
+          value: /tmp
+        - name: LANG
+          value: C.UTF-8
+      resources:
+        requests: {cpu: "1", memory: 2Gi}
+        limits: {cpu: "4", memory: 6Gi}
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ["ALL"]
+      volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+  volumes:
+    - name: tmp
+      emptyDir: {}

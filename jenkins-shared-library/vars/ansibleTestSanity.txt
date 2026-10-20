@@ -1,0 +1,9 @@
+ansibleTestSanity(Map opts = [:]) - ansible-test sanity.
+  core      serie ansible-core (defaut : withAnsibleCore, sinon serie par defaut)
+  testMode  venv (agent sans moteur, pod OpenShift) | docker (agent ansible-builder) | auto
+  args      arguments ansible-test supplementaires, ex. args: ['--test', 'pep8']
+  sanityArgs  idem, via la configuration commune
+JUnit publie : reports/sanity-<serie>/junit/*.xml. En mode venv, get-pip est remplace par une version
+hors ligne (ensurepip + Nexus) et les tests dont les exigences pip sont des URL directes sont ignores
+(ex. pylint d'ansible-core 2.22).
+Exemple : withAnsibleCore('2.20') { ansibleTestSanity(testMode: 'venv') }

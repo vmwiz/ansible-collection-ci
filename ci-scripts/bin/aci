@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# aci - outillage CI des collections Ansible (meme scripts pour Jenkins et GitLab, airgap/Nexus).
+# Usage : aci <commande> [arguments transmis a l'outil]     (aci help)
+set -euo pipefail
+here=$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)
+# shellcheck source-path=SCRIPTDIR source=../lib/aci/common.sh
+. "$here/../lib/aci/common.sh"
+
+cmd=${1:-help}; [ $# -gt 0 ] && shift
+case $cmd in
+  help|-h|--help)
+    sed -n 's/^# aide: //p' "$ACI_LIB"/cmd/*.sh
+    exit 0 ;;
+  --version|version) echo "aci $ACI_VERSION"; exit 0 ;;
+esac
+[ -f "$ACI_LIB/cmd/$cmd.sh" ] || die "commande inconnue '$cmd' (aci help)"
+log "aci $ACI_VERSION : $cmd"
+# Pre-versions : ACI_PRERELEASE_EXIT_CODE (ex. 3, avec allow_failure:exit_codes dans GitLab) remplace le
+# code d'echec d'une serie listee dans ACI_PRERELEASE -> job "en echec autorise" au lieu d'echoue.
+aci_on_exit() {
+  local rc=$?
+  if [ "$rc" -ne 0 ] && [ -n "${ACI_PRERELEASE_EXIT_CODE:-}" ] && aci_is_prerelease; then
+    warn "ansible-core $(aci_core) est en pre-version : echec non bloquant (code $rc -> $ACI_PRERELEASE_EXIT_CODE)"
+    exit "$ACI_PRERELEASE_EXIT_CODE"
+  fi
+}
+trap aci_on_exit EXIT
+# shellcheck source=/dev/null
+. "$ACI_LIB/cmd/$cmd.sh"
+main "$@"

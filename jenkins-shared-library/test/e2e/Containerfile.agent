@@ -1,0 +1,13 @@
+# Agent Jenkins inbound (websocket) = image runner + Java 21 : simule un agent "ansible-runner"
+# (en production : pod OpenShift jnlp + runner ; ici pas de cluster Kubernetes).
+ARG RUNNER_IMAGE=localhost/ansible-collection-runner:ubi9-v4
+FROM ${RUNNER_IMAGE}
+USER 0
+RUN microdnf -y install --setopt=install_weak_deps=0 --nodocs java-21-openjdk-headless && microdnf clean all
+COPY agent.jar /opt/jenkins/agent.jar
+# banc : faux podman pour l'introspection des EE (voir podman-shim.sh)
+COPY podman-shim.sh /usr/local/bin/podman
+# JVM de l'agent : noms de fichiers UTF-8 (sinon archiveArtifacts echoue sur des noms non ASCII)
+ENV LANG=C.UTF-8
+USER 1001
+ENTRYPOINT ["sh", "-c", "exec java -jar /opt/jenkins/agent.jar -url \"$JENKINS_URL\" -secret @\"$JENKINS_SECRET_FILE\" -name \"$JENKINS_AGENT_NAME\" -webSocket -workDir \"$HOME/agent\""]
