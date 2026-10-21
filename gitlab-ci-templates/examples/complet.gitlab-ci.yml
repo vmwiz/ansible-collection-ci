@@ -23,7 +23,7 @@ include:
       integration: true
       integration-images: [default]
       molecule: true
-      molecule-images: ubuntu2404 fedora43
+      molecule-images: ubuntu2404 fedora40
       spotter: true
       spotter-endpoint: https://spotter.corp.local/api
       spotter-allow-failure: true

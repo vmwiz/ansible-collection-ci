@@ -85,7 +85,7 @@ avec le code 3 (`allow_failure: exit_codes: [3]`).
 | `stage-static` | string | `'build'` | Stage des controles statiques (lint, docs, build, certification, securite...). |
 | `stage-test` | string | `'test'` | Stage ansible-test (sanity, units, integration) et molecule. |
 | `stage-publish` | string | `'deploy'` | Stage de publication (sur tag). |
-| `runner-image` | string | `'nexus.corp.local:8443/ci/ansible-collection-runner:2026.10'` | Image runner (contient /opt/ansible-ci/bin/aci, Python 3.12 + 3.14). Son tag fige les scripts. |
+| `runner-image` | string | `'nexus.corp.local:8443/ci/ansible-collection-runner:2026.10'` | Image runner (contient /opt/ansible-ci/bin/aci et Python 3.12). Son tag fige les scripts. |
 | `runner-tags` | array | `['ansible-runner']` | Tags du runner Kubernetes/OpenShift (pods restricted-v2, sans moteur de conteneurs). |
 | `builder-tags` | array | `['ansible-builder']` | Tags du runner shell de la VM ansible-builder (podman, runner shell) - mode docker, integration, molecule, EE. |
 | `aci-path` | string | `'/opt/ansible-ci/bin/aci'` | Chemin des scripts aci dans l'image runner et sur la VM ansible-builder. |
@@ -117,7 +117,7 @@ avec le code 3 (`allow_failure: exit_codes: [3]`).
 | `integration-images` | array | `['default']` | Images ansible-test --docker de l'integration (une job par image). |
 | `docker-network` | string | `''` | ansible-test --docker-network |
 | `coverage` | boolean | `false` |  |
-| `molecule-images` | string | `'ubuntu2404 fedora43'` | Images molecule separees par des espaces |
+| `molecule-images` | string | `'ubuntu2404 fedora40'` | Images molecule separees par des espaces |
 | `pip-index-url` | string | `''` | Vide = /etc/pip.conf de l image (seul lu par ansible-test --venv) |
 | `pypi-endpoint` | string | `'https://nexus.corp.local/repository/pypi-group/simple'` | Index PyPI des conteneurs ansible-test |
 | `image-mirror` | string | `'nexus.corp.local:8444'` | Miroir des images quay.io/ansible |
@@ -150,9 +150,10 @@ Définissez-les comme variables CI/CD **masquées** :
   * vérification que les inputs invalides sont refusés ;
   * simulation des jobs créés pour chaque contexte (branche, branche par défaut, MR, tag) ;
   * validation des exemples.
-* `tests/run-jobs.sh INPUTS CONTEXTE "jobs..."` : exécute **pour de vrai** les scripts des jobs rendus.
+* `../tests/gitlab-jobs/run-jobs.sh INPUTS CONTEXTE "jobs..."` (banc, hors livrable) : exécute **pour de vrai** les scripts des jobs rendus.
   Chaque job tourne dans un clone neuf, dans l'image runner, en airgap, avec un UID arbitraire ;
   l'introspection tourne sur l'hôte avec podman.
 * `render.py` reste une **émulation**. La validation finale se fait dans GitLab : CI Lint
   (`/-/ci/lint`, ou l'API `POST /projects/:id/ci/lint`) et le pipeline du projet composant
-  (`.gitlab-ci.yml`), qui inclut le composant `@$CI_COMMIT_SHA` sur `tests/collection`.
+  (`.gitlab-ci.yml`), qui inclut le composant `@$CI_COMMIT_SHA` sur `tests/collection` (copie de
+  `exemple-collection/corp.demo` maintenue par `tools/sync.sh`).

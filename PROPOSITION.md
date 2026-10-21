@@ -1,6 +1,7 @@
 # Proposition v4 : bibliothèques CI pour tester et valider des collections Ansible (airgap, Jenkins et GitLab, AAP 2.6)
 
-*Version 4, 20/10/2026.*
+*Version 4, 20/10/2026 ; révision 1.0.1 du 21/10/2026 (nettoyage : Python 3.12 seul requis, fichiers
+obsolètes retirés, banc de test isolé dans `tests/`).*
 
 **Ce qui change par rapport à la v3**
 * **nox est retiré.** La logique ne vit plus dans chaque dépôt (`noxfile.py`). Elle est dans **deux
@@ -14,7 +15,7 @@
   * matrice dérivée des EE réellement déployées (`targetEEs`) ;
   * étape **certification Red Hat** ;
   * **fragment de changelog obligatoire** sur les PR/MR.
-* La v3 reste disponible dans le tag git `v3-nox` et dans le dossier `archive/v3-nox/`.
+* La v3 (nox) n'est plus livrée ; elle reste consultable dans l'historique git (tag `v3-nox`).
 
 ## 0. En bref
 
@@ -64,10 +65,10 @@ flowchart LR
     aci[ci-scripts/ : CLI bash aci 1.0.0<br/>+ helpers Python, versions figées,<br/>certification.env]
     jsl[jenkins-shared-library/<br/>vars/ src/ resources/]
     glc[gitlab-ci-templates/<br/>templates/ansible-collection]
-    img[infra/runner-image<br/>UBI 9 + py3.12/3.14 + aci]
+    img[infra/runner-image<br/>UBI 9 + py3.12 + aci]
     vm[infra/ansible-builder-vm<br/>podman + aci]
   end
-  aci -- tools/sync-aci.sh --> jsl
+  aci -- tools/sync.sh --> jsl
   aci -- COPY --> img
   aci -- playbook --> vm
   col[Collection<br/>Jenkinsfile 2 lignes / .gitlab-ci.yml 3 lignes]
@@ -89,7 +90,7 @@ flowchart LR
 | Brique | Rôle | Livraison des scripts `aci` |
 |---|---|---|
 | `ci-scripts/` | **Source unique** : `bin/aci` (dispatcher), `lib/aci/common.sh`, `lib/aci/cmd/*.sh` (une commande par fichier), `lib/aci/py/*.py`, `share/aci/` (contraintes, configurations, `python-map.txt`, `certification.env`) | — |
-| `jenkins-shared-library/` | `ansibleCollectionPipeline` (déclaratif) + 18 étapes granulaires + pod `restricted-v2` | **copie embarquée** dans `resources/` (`tools/sync-aci.sh`), déposée sur l'agent par `libraryResource` : la version des scripts = la version de la bibliothèque |
+| `jenkins-shared-library/` | `ansibleCollectionPipeline` (déclaratif) + 18 étapes granulaires + pod `restricted-v2` | **copie embarquée** dans `resources/` (`tools/sync.sh`, contrôlée par `--check`), déposée sur l'agent par `libraryResource` : la version des scripts = la version de la bibliothèque |
 | `gitlab-ci-templates/` | composant `ansible-collection` (46 inputs) | **dans l'image runner** `/opt/ansible-ci/bin/aci` (un composant ne livre que du YAML ; évaluation au §7.3) |
 | `infra/runner-image/` | image des pods (Jenkins et GitLab) | `COPY ci-scripts` |
 | `infra/ansible-builder-vm/` | VM podman (agent Jenkins, runner GitLab `shell`) | copie par le playbook |
@@ -109,13 +110,15 @@ chose : `ACI_CORE=2.18 /opt/ansible-ci/bin/aci sanity`.
 |---|---|---|---|
 | **2.16** | AAP 2.6 (défaut de la plateforme) | 3.10 – 3.12 | **3.12** (celui des EE) |
 | **2.18** | AAP 2.5 / 2.6 / 2.7 | 3.11 – 3.13 | **3.12** |
-| 2.20 | AAP 2.7, **optionnelle** (`ansibleCoreOptional: ['2.20']` / `ansible-core-optional: '2.20'`), non bloquante | 3.12 – 3.14 | 3.14 (matrice) ; 3.12 (sanity de certification) |
+| 2.20 | AAP 2.7, **optionnelle** (`ansibleCoreOptional: ['2.20']` / `ansible-core-optional: '2.20'`), non bloquante | 3.12 – 3.14 | **3.12** |
 
 Les plages viennent de `CONTROLLER_PYTHON_VERSIONS` des branches `stable-2.16/2.18/2.20`
 d'ansible-test : 3.12 est bien dans la plage de 2.16. Elles sont centralisées dans `share/aci/python-map.txt`,
-où 3.12 est listé en premier pour 2.16 et 2.18. L'image runner a donc **python3.12** (et python3.14 pour
-2.20 et au-delà). 2.19, 2.21, 2.22, `milestone` et `devel` restent possibles par paramètre, par exemple
-pour une série nocturne non bloquante.
+où 3.12 est listé en premier pour toutes les séries qui l'acceptent (2.16 → 2.21). L'image runner et la VM
+n'ont donc besoin que de **python3.12**. 2.21 reste possible par paramètre ; 2.22, `milestone` et `devel`
+(contrôleur ≥ 3.13) exigent d'ajouter python3.14 à l'image (`PYTHON_VERSIONS="3.12 3.14"`), par exemple pour
+une série nocturne non bloquante. Sans lui, `aci` s'arrête avec « aucun Python contrôleur pour ansible-core
+2.22 sur cet agent ».
 
 ### 3.2 Matrice dérivée des EE (`targetEEs` / `target-ees`)
 1. Sur la VM : `podman run --rm --pull=missing --network none --entrypoint ansible <EE> --version`.
@@ -217,7 +220,7 @@ Les références complètes avec défauts sont `jenkins-shared-library/vars/ansi
 | Exemption changelog | `changelogSkipToken` | `changelog-skip-token` | `skip-changelog` |
 | Mode ansible-test | `testMode`, `fullTestBranches` | `test-mode` | `auto` |
 | Arguments | `sanityArgs unitsArgs integrationArgs dockerNetwork coverage` | `sanity-args …` | vides / `false` |
-| Intégration / Molecule | `integrationCoreVersions integrationImages moleculeImages` | `integration-images molecule-images` | `['default']`, `ubuntu2404 fedora43` |
+| Intégration / Molecule | `integrationCoreVersions integrationImages moleculeImages` | `integration-images molecule-images` | `['default']`, `ubuntu2404 fedora40` |
 | Agents | `agentType runnerImage jnlpImage podTemplateYaml podCloud runnerLabel builderLabel containerEngine` | `runner-image runner-tags builder-tags` | pod `kubernetes`, `ansible-runner`, `ansible-builder` |
 | Scripts | `scriptsFrom` (`library` / `agent`), `agentScriptsPath` | `aci-path` | bibliothèque / `/opt/ansible-ci/bin/aci` |
 | Nexus | `pipIndexUrl pypiEndpoint imageMirror galaxyServerUrl galaxyPublishUrl` | `pip-index-url pypi-endpoint image-mirror galaxy-server-url galaxy-publish-url` | URL `nexus.corp.local` (placeholders) |
@@ -236,7 +239,7 @@ Validation :
 
 ### 7.1 Règles
 * **SemVer**, une seule version pour tout le dépôt : `ci-scripts/VERSION` = bibliothèque Jenkins =
-  composant GitLab = tag d'image `aci-X.Y.Z`. Version actuelle : **1.0.0**.
+  composant GitLab = tag d'image `aci-X.Y.Z`. Version actuelle : **1.0.1**.
 * **Patch** : correctif. **Mineure** : nouveau paramètre ou nouvelle étape *désactivée par défaut*, mise à
   jour compatible d'un outil. **Majeure** : paramètre renommé, **défaut modifié** (matrice, étape activée
   par défaut), version majeure d'`aci`. Exemple : passer la matrice par défaut à 2.18 + 2.20 lors du
@@ -249,10 +252,11 @@ Validation :
 * `CHANGELOG.md` dans chaque bibliothèque.
 
 ### 7.2 Procédure de release (mainteneurs CI)
-1. Modifier `ci-scripts/`, lancer `tools/sync-aci.sh` puis `ci-scripts/tests/smoke.sh`,
+1. Modifier `ci-scripts/`, lancer `tools/sync.sh` puis `ci-scripts/tests/smoke.sh`,
    `ci-scripts/tests/guards.sh` et shellcheck.
-2. Lancer `jenkins-shared-library/test/unit/run.sh`, `test/validate-pod.sh`, `test/e2e/run-e2e.sh`
-   (banc) et `gitlab-ci-templates/tests/validate.sh`.
+2. Lancer `tools/sync.sh --check`, `jenkins-shared-library/test/unit/run.sh`, `test/validate-pod.sh`,
+   `gitlab-ci-templates/tests/validate.sh`, puis le banc (`tests/jenkins-e2e/run-e2e.sh`,
+   `tests/gitlab-jobs/run-jobs.sh`, voir `tests/README.md`).
 3. Mettre à jour `VERSION`, les `CHANGELOG.md`, `ACI_EXPECTED_VERSION` et le `runner-image` par défaut
    du composant. `validate.sh` contrôle la cohérence.
 4. Construire et pousser l'image runner (`2026.MM` + `aci-X.Y.Z`), puis relancer le playbook de la VM.
@@ -309,7 +313,7 @@ référence (`@v1`) fixe à la fois le Groovy et le bash. `scriptsFrom: 'agent'`
 | `SPOTTER_ENDPOINT` (variable) | `spotterEndpoint` / `spotter-endpoint` (jeton inchangé) |
 | matrice 2.19 → 2.22 | **2.16 + 2.18** (+ 2.20 optionnelle) : à adapter à `requires_ansible` |
 | `build_ignore: [ci, noxfile.py, …, .nox]` | `build_ignore: [Jenkinsfile, .gitlab-ci.yml, reports, dist]` |
-| image runner avec nox | même image sans nox, avec `/opt/ansible-ci/bin/aci` (388 Mo au lieu de 403) |
+| image runner avec nox | même image sans nox, avec `/opt/ansible-ci/bin/aci` et Python 3.12 seul (326 Mo au lieu de 403) |
 
 Procédure (une MR par collection) :
 1. Supprimer `noxfile.py`, `ci/` et `.nox/`.
@@ -342,7 +346,7 @@ Procédure (une MR par collection) :
 ### 10.2 VM `ansible-builder` : podman rootless (validé)
 * ansible-test cherche `docker` puis `podman` (`DOCKER_COMMANDS`), ignore un `docker` qui n'est qu'un alias de podman ; `ANSIBLE_TEST_PREFER_PODMAN=1` inverse l'ordre.
 * Les conteneurs de test démarrent systemd (`--systemd always --cgroupns private`) : il faut une **délégation cgroup v2** à l'utilisateur CI (session systemd utilisateur, `loginctl enable-linger`), des plages `/etc/subuid`/`/etc/subgid`, et `XDG_RUNTIME_DIR` pour les jobs lancés sans session logind (runner GitLab `shell`).
-* Préparation automatisée : `infra/ansible-builder-vm/site.yml` (podman, python3.14 + python3.12, AC, `/etc/pip.conf`, `registries.conf` Nexus, linger, scripts `aci` dans `/opt/ansible-ci`).
+* Préparation automatisée : `infra/ansible-builder-vm/site.yml` (podman, python3.12, AC, `/etc/pip.conf`, `registries.conf` Nexus, linger, scripts `aci` dans `/opt/ansible-ci`).
 * Une VM est un point unique : en prévoir 2 (labels identiques) et dimensionner les exécuteurs (un job = 2 à 3 conteneurs ; `default-test-container` occupe 1,55 Go).
 
 ### 10.3 Options pour se passer de la VM sur OpenShift
@@ -362,34 +366,35 @@ Procédure (une MR par collection) :
 | `pypi-hosted` | PyPI hosted | — | outils internes, wheels patchés |
 | `pypi-group` | PyPI group | proxy + hosted | **index unique** : `https://nexus.corp.local/repository/pypi-group/simple` |
 | `quay-proxy` | Docker proxy (connecteur dédié, ex. port 8444) | `https://quay.io` | `quay.io/ansible/*-test-container`, `ansible-test-utility-container`, `quay.io/ansible-community/test-image:*` |
-| `dockerhub-proxy` | Docker proxy | `https://registry-1.docker.io` | `python`, `docker:cli`, `docker:dind`, images de service (mysql, postgres, vault…) |
-| `ghcr-proxy` | Docker proxy (ex. port 8445) | `https://ghcr.io` | images d'aide (ex. `ghcr.io/ansible-collections/*`) |
-| `docker-hosted` (+ `docker-group`, ex. port 8443) | Docker hosted / group | — | image runner, images ansible-test dérivées, images molecule internes |
+| `dockerhub-proxy` | Docker proxy | `https://registry-1.docker.io` | *optionnel* : images de service des cibles d'intégration / Molecule (mysql, postgres, vault…) |
+| `ghcr-proxy` | Docker proxy (ex. port 8445) | `https://ghcr.io` | *optionnel* : images d'aide de certaines cibles (ex. `ghcr.io/ansible-collections/*`) |
+| `docker-hosted` (+ `docker-group`, ex. port 8443) | Docker hosted / group | — | image de base UBI 9 d'entreprise, image runner, images Molecule internes éventuelles |
 | `ansible-proxy` | **Ansible** proxy (Nexus ≥ 3.93.0) | `https://galaxy.ansible.com` | dépendances de collections |
 | `ansible-hosted` | Ansible hosted | — | **publication** des collections internes |
 | `ansible-group` | Ansible group | proxy + hosted | résolution unique pour `ansible-galaxy` |
-| `debian-proxy`, `ubuntu-proxy` | APT proxy | `http://deb.debian.org/debian`, `http://archive.ubuntu.com/ubuntu` | build des images ; paquets OS installés par les cibles d'intégration |
-| `raw-hosted` | Raw | — | tarballs ansible-core `devel`/`milestone` (si testés), binaires kind/helm, etc. |
+| `ubuntu-proxy` | APT proxy | `http://archive.ubuntu.com/ubuntu` | *optionnel* : seulement si des cibles d'intégration installent des paquets dans les conteneurs ansible-test Ubuntu (aucune image n'est construite sur Debian/Ubuntu) |
+| `raw-hosted` | Raw | — | *optionnel* : tarballs ansible-core `devel`/`milestone` (si testés, variables `ACI_CORE_SRC_DEVEL` / `ACI_CORE_SRC_MILESTONE`), binaires kind/helm. Les scripts `get-pip` ne sont **plus** nécessaires (§13) |
 | `gitlab-registry-proxy` (ex. port 8446) | Docker proxy | `https://registry.gitlab.com` | image helper `gitlab-runner-helper-ocp` pour l'executor Kubernetes sur OpenShift |
 | `redhat-registry-proxy` (ex. port 8447) | Docker proxy | `https://registry.redhat.io` (compte de service Red Hat) | **EE AAP** (`ansible-automation-platform-26/ee-minimal-rhel9`…) pour `targetEEs` ; ou Private Automation Hub |
-| `rpm-proxy` / dépôts BaseOS-AppStream (+ EPEL 9 optionnel) | Yum proxy | dépôts RHEL 9 / UBI 9 | image de base UBI 9 d'entreprise et image runner (`python3.12`/`python3.14` sont dans **AppStream**) ; VM `ansible-builder` (podman, python3.12, python3.14…) ; EPEL seulement si `ShellCheck` en RPM |
+| `rpm-proxy` / dépôts BaseOS-AppStream (+ EPEL 9 optionnel) | Yum proxy | dépôts RHEL 9 / UBI 9 | image de base UBI 9 d'entreprise et image runner (`python3.12` est dans **AppStream**) ; VM `ansible-builder` (podman, python3.12…) ; EPEL seulement si `ShellCheck` en RPM |
 
 Points d'attention Nexus :
 * activer les realms **Docker Bearer Token** et **Ansible Galaxy Bearer Token** ([doc Sonatype](https://help.sonatype.com/en/configure-ansible-with-nexus.html)). Le jeton Galaxy Nexus est `base64("user:password")` ;
 * le support natif du format Ansible est arrivé avec **Nexus 3.93.0 (04/06/2026)** ([release notes](https://help.sonatype.com/en/sonatype-nexus-repository-3-93-0-release-notes.html)). Sur une version plus ancienne, voir les alternatives du §14 ;
-* Docker Engine n'applique `registry-mirrors` qu'à `docker.io`. Pour quay.io et ghcr.io, il faut soit le **re-tag** (§12.2), soit Podman et `registries.conf` (fichier `infra/podman/registries.conf`).
+* Docker Engine n'applique `registry-mirrors` qu'à `docker.io`. Pour quay.io et ghcr.io, il faut soit le **re-tag** (§12.2), soit Podman et `registries.conf` (fichier `infra/ansible-builder-vm/templates/registries-nexus.conf`, déployé par le playbook de la VM).
 
 ## 12. Images
 
 ### 12.1 Image runner (`infra/runner-image/`, détails dans son README)
 * `FROM` l'image de base d'entreprise **UBI 9** (`ARG BASE_IMAGE`, défaut `nexus.corp.local:8443/corp/ubi9-corp:9.8`,
   placeholder). L'AC, `/etc/pip.conf` (Nexus) et les dépôts microdnf internes viennent de cette base.
-* Ajoute **python3.12** (2.16, 2.18, 2.19, certification, EE AAP) et **python3.14** (2.20 à 2.22) depuis
-  AppStream. RHEL 9.8 ne fournit pas 3.13. Le `python3` système (3.9) est conservé tel quel.
+* Ajoute **python3.12** depuis AppStream : il couvre 2.16, 2.18, 2.20 (optionnelle), la certification et
+  correspond au Python des EE AAP. python3.14 n'est ajouté que sur demande (`PYTHON_VERSIONS="3.12 3.14"`)
+  pour 2.22 / `devel` ; RHEL 9.8 ne fournit pas 3.13. Le `python3` système (3.9) est conservé tel quel.
 * Ajoute `git-core`, `openssh-clients`, `tar`, `gzip`, `rsync`, `jq` ; un venv d'outils `/opt/ansible-ci`
   (PyYAML, shellcheck-py) ; les **scripts `aci`** (`/opt/ansible-ci/bin/aci`) ; l'utilisateur `ci`
   (UID 1001, GID 0, HOME en `g=u`, compatible avec un UID arbitraire OpenShift).
-* Plus de nox ni de CLI docker. **388 Mo** (v3 : 403 Mo). Tags `2026.MM` et `aci-X.Y.Z`.
+* Ni nox, ni moteur/CLI de conteneurs. **326 Mo** (v1.0.1 ; 388 Mo avec python3.14). Tags `2026.MM` et `aci-X.Y.Z`.
 * ansible-core n'est pas dans l'image : `aci` crée un venv par série (`~/.cache/ansible-ci/venv`, verrou
   `flock`), depuis Nexus.
 
@@ -398,22 +403,21 @@ ansible-test lit ses images dans `ansible_test/_data/completion/docker.txt`. Ce 
 
 | ansible-core | `default` (collections) | `base` |
 |---|---|---|
-| 2.19.14 | `quay.io/ansible/default-test-container:11.6.0` | `base-test-container:8.2.0` |
-| 2.20.10 | `default-test-container:v2.20-4` | `v2.20-2` |
-| 2.21.5 | `default-test-container:v2.21-4` | `v2.21-4` |
-| 2.22.0rc1 | `default-test-container:v2.22-8` | `v2.22-8` |
+| 2.16.19 | `quay.io/ansible/default-test-container:8.12.0` | `base-test-container:5.10.0` |
+| 2.18.19 | `default-test-container:10.9.0` | `base-test-container:7.7.0` |
+| 2.20.10 (optionnelle) | `default-test-container:v2.20-4` | `v2.20-2` |
 
 En revanche, **ansible-test ne tire pas une image déjà présente localement** (`docker_util.py` : *« Skipping pull of existing image »*). `aci prime-images` (`lib/aci/py/prime_images.py`) exploite ce comportement :
 1. lecture de `docker.txt` dans le venv de la série, donc pour la bonne version d'ansible-core ;
-2. `docker pull <ANSIBLE_TEST_IMAGE_MIRROR>/ansible/default-test-container:<tag>` depuis Nexus ;
-3. `docker tag … quay.io/ansible/default-test-container:<tag>`.
+2. `podman pull <ACI_IMAGE_MIRROR>/ansible/default-test-container:<tag>` depuis Nexus (`ACI_CONTAINER_ENGINE`) ;
+3. `podman tag … quay.io/ansible/default-test-container:<tag>`.
 
-La sémantique de l'alias `default` est ainsi conservée : sanity et units passent sur **toutes** les versions Python de l'image, 3.9 à 3.14 pour la 2.21. Avec `--docker <image-perso>`, on n'aurait que la version Python du contrôleur.
+La sémantique de l'alias `default` est ainsi conservée : sanity et units passent sur **toutes** les versions Python cibles de l'image de la série. Avec `--docker <image-perso>`, on n'aurait que la version Python du contrôleur.
 Le script tire aussi **`ansible-test-utility-container`**. ansible-test l'utilise à chaque exécution `--docker` pour sonder les cgroups et l'audit, puis pour remonter `/sys/fs/cgroup` (`docker run --pid host --privileged … nsenter`, observé dans les logs). Sans lui, même la sanity échoue en airgap.
 
 *Variante Podman* : `registries.conf` avec un miroir pour `quay.io`, `ANSIBLE_TEST_PREFER_PODMAN=1` et `ACI_IMAGE_MIRROR` (`imageMirror` / `image-mirror`) vide. Le re-tag devient alors inutile.
 
-*Variante images dérivées* (`infra/test-images/Dockerfile`) : on ajoute l'AC, `/etc/pip.conf` et les sources APT Nexus à l'image officielle, on la pousse sous `docker-hosted/airgap-quay/ansible/…:<même tag>` et on pointe `ACI_IMAGE_MIRROR` (`imageMirror` / `image-mirror`) dessus. Utile si des cibles d'intégration font de l'`apt` ou si l'on veut se passer de `--pypi-endpoint`.
+*Images dérivées* (AC + `/etc/pip.conf` + APT Nexus ajoutés aux images officielles, poussées sous le même tag) : non retenues et plus livrées depuis la v1.0.1. `--pypi-endpoint` suffit pour pip ; à reconsidérer seulement si des cibles d'intégration font de l'`apt` (feuille de route).
 
 ## 13. pip dans l'airgap
 
@@ -421,7 +425,6 @@ Le script tire aussi **`ansible-test-utility-container`**. ansible-test l'utilis
 |---|---|---|
 | Runner et venvs `aci` | `PIP_INDEX_URL` (variable CI) + `/etc/pip.conf` | **Ne jamais** déposer `~/.pip/pip.conf` sur le runner : ansible-test refuse de l'écraser hors conteneur géré (*« Refusing to overwrite existing file »*, `pypi_proxy.py`) |
 | Conteneurs ansible-test (contrôleur et cibles) | **`--pypi-endpoint <URL>`** (`pypiEndpoint` / `pypi-endpoint`, ajouté par `aci` en mode docker) | Option masquée (`argparse.SUPPRESS`), mais implémentée et transmise à l'invocation déléguée. ansible-test écrit `~/.pip/pip.conf` (`index-url` + `trusted-host`) dans le conteneur, puis le retire en fin de test |
-| Images dérivées (optionnel) | `/etc/pip.conf` intégré à l'image | Indépendant des options d'ansible-test |
 | `ansible-test --venv` (pods OpenShift) | `/etc/pip.conf` de l'**image de base UBI 9** **uniquement** | ansible-test **ne transmet pas** `PIP_INDEX_URL` à ses venvs (constaté : pip est parti vers l'index de `/etc/pip.conf`). Amorçage de pip par `lib/aci/py/get_pip_offline.py` (ensurepip + Nexus, §12.1) |
 
 Constats des essais :
@@ -429,7 +432,7 @@ Constats des essais :
 * **units `--requirements`** installe `tests/unit/requirements.txt` **dans le conteneur**. Sans `--pypi-endpoint`, pip part vers `pypi.org` et échoue en airgap ; avec, ça passe. Les deux cas ont été testés ;
 * **integration** installe au minimum `requirements/ansible.txt` dans le conteneur contrôleur ;
 * `PIP_INDEX_URL` défini dans le job **n'est pas propagé** dans les conteneurs ansible-test ;
-* `trusted-host` est posé sur l'hôte de l'index, ce qui **désactive la vérification TLS** pour cet hôte dans les conteneurs de test. C'est acceptable pour un Nexus interne. Sinon, passer aux images dérivées avec l'AC.
+* `trusted-host` est posé sur l'hôte de l'index, ce qui **désactive la vérification TLS** pour cet hôte dans les conteneurs de test. C'est acceptable pour un Nexus interne.
 
 ## 14. Collections Galaxy (dépendances et publication)
 
@@ -467,7 +470,7 @@ ansible-core 2.16.19 / 2.18.19, `ENTRYPOINT /bin/false`, `USER 1000`) :
 * image sans ansible → message clair ;
 * Python hors plage → refusé.
 
-**Jenkins 2.580.1 réel** (`test/e2e/run-e2e.sh`). La bibliothèque est chargée depuis un dépôt git local
+**Jenkins 2.580.1 réel** (`tests/jenkins-e2e/run-e2e.sh`). La bibliothèque est chargée depuis un dépôt git local
 (`defaultVersion v1`, tag `v1.0.0`) ; l'agent statique `ansible-runner` est l'image runner + JDK 21, en
 airgap ; mode `venv`.
 
@@ -481,7 +484,7 @@ airgap ; mode `venv`.
 | `bad-step` | **FAILURE attendu** | « paramètre inconnu 'cor' (vouliez-vous dire 'core' ?) » |
 | `matrix-dynamic` | **FAILURE attendu** | preuve que `matrix` refuse des axes calculés : « Expected string literal but got ${cores} » |
 
-Dans le job `corp-demo-ee`, l'introspection passe par un **faux `podman`** (`test/e2e/podman-shim.sh`),
+Dans le job `corp-demo-ee`, l'introspection passe par un **faux `podman`** (`tests/jenkins-e2e/podman-shim.sh`),
 parce que l'agent de test n'a pas de moteur de conteneurs. Ce shim exécute le vrai `ansible --version` d'un
 venv de la version de l'EE. Le vrai `podman run` des EE a été testé à part, sur l'hôte.
 
@@ -492,14 +495,14 @@ AAP, la validation, la matrice, `ansibleCoreOptional`, l'exclusivité de `target
 
 **Composant GitLab, sans instance GitLab** :
 * `tests/validate.sh` **16/16** :
-  * rendu des inputs minimal, complet et banc ;
+  * rendu des inputs minimal, complet et banc (v1.0.0 ; minimal et complet depuis v1.0.1) ;
   * en-tête `spec` et rendu valides selon le **schéma officiel GitLab** (`ci.json` de 19.6.0-pre) ;
   * inputs invalides refusés : input inconnu, type, `options`, `regex` ;
   * jobs attendus par contexte : branche → venv ; branche par défaut et tag → docker ; MR → changelog ;
     tag → publication ;
   * exemples utilisateur valides ;
   * `ACI_EXPECTED_VERSION` = `ci-scripts/VERSION`.
-* `tests/run-jobs.sh` exécute **réellement** les scripts des jobs rendus, chacun dans un clone neuf, dans
+* `tests/gitlab-jobs/run-jobs.sh` exécute **réellement** les scripts des jobs rendus, chacun dans un clone neuf, dans
   l'image runner, en airgap, avec un UID arbitraire :
   * tous OK : `aci-ee-introspect` (podman, EE simulées), `aci-certification`, `aci-lint`, `aci-docs`,
     `aci-build`, `aci-security`, `aci-sanity-venv` 2.16 et 2.18 (version exacte et Python de l'EE lus
@@ -512,7 +515,16 @@ AAP, la validation, la matrice, `ansibleCoreOptional`, l'exclusivité de `target
 **Infra** : playbook de la VM, `--syntax-check` + ansible-lint `production` OK. Les tâches d'installation
 d'`aci` ont été exécutées en local (`aci version` → `aci 1.0.0`).
 
-**Historique (v1 à v3.1, nox, archivé)** : voir `archive/v3-nox/PROPOSITION-v3.md` §11. Ces essais ont
+**Révision 1.0.1 (21/10/2026, nettoyage)** : shellcheck sur tous les scripts, `smoke.sh` 11/11 (dans
+l'image), `guards.sh` 14/14, `test/unit/run.sh` 14/14, `validate-pod.sh` OK, `validate.sh` 15/15 (schéma
+GitLab), extraits du guide et `.gitlab-ci.yml` de `corp.demo` valides, `tools/sync.sh --check` OK, ansible-lint
+`production` sur `site.yml`. Image runner reconstruite avec Python 3.12 seul (**326 Mo**) : `aci version` →
+1.0.1 ; 2.16 et 2.20 → python3.12 ; 2.22 → arrêt explicite (pas de Python ≥ 3.13). `aci units` et
+`aci sanity` 2.20 en Python 3.12 OK dans cette image (index PyPI public, hors banc airgap). Le banc Jenkins
+de bout en bout n'a **pas** été relancé pour 1.0.1 (changements : préférence Python, défauts Molecule,
+documentation, emplacement des fichiers de test).
+
+**Historique (v1 à v3.1, nox)** : voir `git show v3-nox:PROPOSITION.md` §11. Ces essais ont
 validé en particulier la VM podman rootless en mode docker (sanity, units, intégration, Molecule) et
 l'export Spotter hors réseau.
 
@@ -526,7 +538,8 @@ l'export Spotter hors réseau.
   * `@1` (version partielle) et la publication dans le catalogue ne sont pas testés.
 * **Jenkins** : seul le mode **venv** sur agent statique a été rejoué en v4. Le mode **docker** (VM podman)
   passe par les mêmes commandes `aci`, validées en v2/v3, mais n'a pas été relancé depuis Jenkins v4.
-  L'intégration et Molecule n'ont pas été relancés en v4. Le contrôle du changelog sur une vraie PR
+  L'intégration et Molecule n'ont pas été relancés en v4 (les défauts Molecule `ubuntu2404 fedora40`
+  de 1.0.1 et l'inventaire de `corp.demo` épinglé sur les tags 2.18 ne sont pas exécutés). Le contrôle du changelog sur une vraie PR
   multibranche n'est pas testé dans Jenkins ; il l'est par `guards.sh` et `run-jobs.sh` (MR).
 * **EE** : introspection testée avec des EE **simulées**, pas avec les images `registry.redhat.io`
   (pas d'accès authentifié). Le numéro exact de core dans `ansible-automation-platform-26/ee-*` reste à
@@ -571,13 +584,13 @@ certification et les garde-fous. Seuls les tests units et intégration dans l'EE
 7. **antsibull-nox / tox-ansible / ansible-test-gh-action** téléchargent ansible-core depuis GitHub (`archive/stable-X.Y.tar.gz`). Ne pas les utiliser tels quels en airgap. Avec antsibull-nox, il faudrait passer `ansible_core_source="pypi"` par l'API Python, car le TOML ne l'expose pas.
 8. **ansible-lint sans `--offline`** tente d'installer les `requirements.yml` et de rafraîchir les schémas.
 9. Les **`--remote`** (VM Red Hat Core CI) n'existent pas on-prem. Les remplacer par des conteneurs de distribution, ou par des VM internes (`ansible-test integration --target ssh:<user>@<host>[:<port>]`, syntaxe vérifiée dans `ansible-test integration --help`).
-10. **Cibles d'intégration** qui font `apt`/`dnf`/`pip` : prévoir les images dérivées (APT/DNF vers Nexus) ou des rôles `setup_*` configurables.
+10. **Cibles d'intégration** qui font `apt`/`dnf`/`pip` : `--pypi-endpoint` couvre pip ; pour `apt`/`dnf`, des rôles `setup_*` configurables (miroirs Nexus) ou, à défaut, des images dérivées (non livrées).
 11. **Socket Docker = root sur l'agent** : réserver des runners/agents dédiés et éphémères. ansible-test lance un conteneur `--privileged --pid host` (sonde cgroup).
 12. **`build_ignore`** dans `galaxy.yml` : exclure `Jenkinsfile`, `.gitlab-ci.yml`, `reports/`, `dist/` de l'artefact.
 13. **galaxy-importer** écrit `importer_result.json` dans le répertoire courant. `aci importer` l'exécute dans `reports/galaxy-importer/`.
 14. ✔ **podman rootless sans délégation cgroup** : les conteneurs ansible-test (systemd) meurent au démarrage (*« Failed to create /init.scope control group: Permission denied »*, puis *« can only create exec sessions on running containers »*). Corrigé en donnant à l'utilisateur un sous-arbre cgroup v2 délégué (session systemd : `loginctl enable-linger`).
 15. ✔ **`ansible-test --venv` en airgap** : télécharge `get-pip-<v>.py` depuis `ci-files.testing.ansible.com` et ignore `PIP_INDEX_URL` → `get_pip_offline.py` déposé par `aci` + `/etc/pip.conf` (§12.1, §13).
-21. **UBI 9** : `python3` = 3.9 ; AppStream a 3.11, 3.12 et 3.14 mais **pas 3.13** (2.16/2.18/2.19 → 3.12, 2.20+ → 3.14) ; pas de ShellCheck hors EPEL ; chemin AC = `/etc/pki/tls/certs/ca-bundle.crt` (pas `/etc/ssl/certs/ca-certificates.crt` de Debian), corrigé dans `SPOTTER_CACERT`.
+21. **UBI 9** : `python3` = 3.9 ; AppStream a 3.11, 3.12 et 3.14 mais **pas 3.13** (3.12 pour 2.16 → 2.21 ; 3.14 seulement pour 2.22+) ; pas de ShellCheck hors EPEL ; chemin AC = `/etc/pki/tls/certs/ca-bundle.crt` (pas `/etc/ssl/certs/ca-certificates.crt` de Debian), corrigé dans `SPOTTER_CACERT`.
 16. ✔ **ansible-security-scanner n'a pas d'option d'exclusion** : lancé à la racine, il analysait `.nox/` en v3 (286 fichiers au lieu de 21). `aci security-scan` scanne une copie propre.
 17. ✔ **galaxy-importer** exige un `README.md` par rôle ; **antsibull-docs** exige `description` dans `meta/argument_specs.yml` (erreurs réelles détectées sur la démo).
 18. ✔ **Spotter CLI 6.6.0** : `--ansible-version` n'accepte que 2.0 → 2.20 (`SPOTTER_ANSIBLE_VERSION`, défaut 2.20) ; code retour 1 dès qu'un résultat reste après filtrage `--display-level` (défaut retenu : `error`).
@@ -657,27 +670,28 @@ certification et les garde-fous. Seuls les tests units et intégration dans l'EE
 * Ce qu'on perd : l'exécution « `nox -s …` » en local. Elle est remplacée par
   `ACI_CORE=2.18 /opt/ansible-ci/bin/aci sanity`, dans l'image runner ou sur la VM.
 * antsibull-nox et tox-ansible restent écartés en airgap (installation d'ansible-core depuis GitHub).
-  Voir `archive/v3-nox/PROPOSITION-v3.md` §15.2.
+  Voir `git show v3-nox:PROPOSITION.md` §15.2.
 
 ### 21.3 Que contiennent les images ansible-test pré-chargées ?
 Elles sont **choisies par ansible-test**, pas par nous : `ansible_test/_data/completion/docker.txt` associe des alias aux images. Chaque version d'ansible-core a ses tags. `aci prime-images` lit ce fichier dans le venv de la série.
 
 | Famille | Contenu | Utilisée par | Taille amd64 (compressée ; décompressée) |
 |---|---|---|---|
-| `base-test-container` | Ubuntu, **toutes les versions Python** supportées (3.9 → 3.14 pour 2.21), PowerShell 7.6, systemd, sshd, outils de build | base des deux suivantes ; alias `base` | `v2.21-4` : 462 Mo |
+| `base-test-container` | Ubuntu, **toutes les versions Python** cibles supportées par la série, PowerShell 7.6, systemd, sshd, outils de build | base des deux suivantes ; alias `base` | `v2.21-4` : 462 Mo |
 | `default-test-container` | base + **requirements sanity/units pré-installés** par version de Python (venvs `sanity.*` amorcés par `prime.py`, `get_pip_25_2.py` en cache) | `--docker default` pour une **collection** (`context=collection`) | `v2.21-4` : 565 Mo ; **1,55 Go** (Ubuntu 24.04.4 constaté au boot) |
 | `ansible-core-test-container` | idem, réglé pour tester ansible-core lui-même | `context=ansible-core` (inutile ici) | — |
-| `ubuntu-test-container`, `fedora-test-container`, `alpine-test-container` | une distribution, **une** version de Python, systemd (sauf alpine) | `integration --docker ubuntu2404 / fedora43 / alpine323…`, cibles Molecule | Ubuntu 24.04 : 242 Mo ; 666 Mo — Fedora 43 : 252 Mo ; 653 Mo — Alpine 3.23 : 158 Mo |
+| `ubuntu-test-container`, `fedora-test-container`, `alpine-test-container` | une distribution, **une** version de Python, systemd (sauf alpine) | `integration --docker ubuntu2404 / fedora40 / alpine320…` (alias de 2.18), cibles Molecule | Ubuntu 24.04 : 242 Mo ; 666 Mo — Fedora 43 : 252 Mo ; 653 Mo — Alpine 3.23 : 158 Mo |
 | `ansible-test-utility-container` | utilitaires de sonde (audit, cgroup) | **chaque** exécution `--docker` | 4 Mo ; 9 Mo |
 | `http-test-container` / `pypi-test-container` / `acme-test-container` | serveur HTTP de test, proxy PyPI, ACME | cibles `needs/httptester`, `--pypi-proxy`, plugin cloud ACME | 33 Mo / 33 Mo / — |
 
-Tags par version d'ansible-core (relevés le 20/10/2026 sur les branches `stable-*`) :
+Tags par version d'ansible-core (relevés le 20-21/10/2026 dans `docker.txt` et `docker_util.py` des versions installées ; 2.16 et 2.18 = matrice par défaut) :
 
 | ansible-core | default / base | Ubuntu / Fedora / Alpine | utility |
 |---|---|---|---|
-| 2.19 | `default-test-container:11.6.0` / `base:8.2.0` (Python 3.8 → 3.13) | `ubuntu2204/2404-test-container:9.0.0`, `fedora41-…:9.0.0`, `alpine321-…:9.1.0` | 3.2.0 |
+| 2.16 | `default-test-container:8.12.0` / `base:5.10.0` | `ubuntu2204-test-container:6.3.0`, `alpine3-test-container:6.3.0` (pas de Fedora ni d'Ubuntu 24.04) | 2.0.0 |
+| 2.18 | `default-test-container:10.9.0` / `base:7.7.0` | `ubuntu2204/2404-test-container:8.1.0`, `fedora40-…:8.1.0`, `alpine320-…:8.1.0` | 3.1.0 |
 | 2.20 | `v2.20-4` / `v2.20-2` (3.9 → 3.14) | `ubuntu-test-container:24.04-v2.20-1`, `fedora-…:42-v2.20-1`, `alpine-…:3.22-v2.20-1` | 3.4.0 |
 | 2.21 | `v2.21-4` / `v2.21-4` (3.9 → 3.14) | `24.04-v2.21-2`, `fedora 43-v2.21-2`, `alpine 3.23-v2.21-2` | 3.5.0 |
 | 2.22 | `v2.22-8` / `v2.22-8` (3.9 → 3.15) | `24.04-v2.22-4`, `26.04-v2.22-4`, `fedora 44-v2.22-4`, `alpine 3.24-v2.22-4` | — |
 
-Budget Nexus indicatif pour 3 séries : environ 2,5 Go compressés (3 × default + 2 distributions + utilitaires). Sources : [base-test-container](https://github.com/ansible/base-test-container), [default-test-container](https://github.com/ansible/default-test-container), API `quay.io/v2`.
+Les lignes 2.21 et 2.22 sont données pour préparer les séries suivantes. Budget Nexus indicatif pour 3 séries : environ 2,5 Go compressés (3 × default + 2 distributions + utilitaires). Sources : [base-test-container](https://github.com/ansible/base-test-container), [default-test-container](https://github.com/ansible/default-test-container), API `quay.io/v2`.

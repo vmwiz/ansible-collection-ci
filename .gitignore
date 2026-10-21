@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+reports/
+dist/
+tests/output/
+/tests/jenkins-e2e/agent.jar

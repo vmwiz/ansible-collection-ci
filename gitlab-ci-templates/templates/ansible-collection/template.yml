@@ -21,7 +21,7 @@ spec:
     # ---- images et runners ----
     runner-image:
       default: nexus.corp.local:8443/ci/ansible-collection-runner:2026.10
-      description: Image runner (contient /opt/ansible-ci/bin/aci, Python 3.12 + 3.14). Son tag fige les scripts.
+      description: Image runner (contient /opt/ansible-ci/bin/aci et Python 3.12). Son tag fige les scripts.
     runner-tags:
       type: array
       default: [ansible-runner]
@@ -84,7 +84,7 @@ spec:
       description: Images ansible-test --docker de l'integration (une job par image).
     docker-network: {default: '', description: 'ansible-test --docker-network'}
     coverage: {type: boolean, default: false}
-    molecule-images: {default: 'ubuntu2404 fedora43', description: 'Images molecule separees par des espaces'}
+    molecule-images: {default: 'ubuntu2404 fedora40', description: 'Images molecule separees par des espaces'}
     # ---- Nexus / Galaxy ----
     pip-index-url: {default: '', description: 'Vide = /etc/pip.conf de l image (seul lu par ansible-test --venv)'}
     pypi-endpoint: {default: 'https://nexus.corp.local/repository/pypi-group/simple', description: 'Index PyPI des conteneurs ansible-test'}
@@ -104,7 +104,7 @@ spec:
   interruptible: true
   variables:
     ACI: $[[ inputs.aci-path ]]
-    ACI_EXPECTED_VERSION: "1.0.0"
+    ACI_EXPECTED_VERSION: "1.0.1"
     # prefixe "series" : un input seul serait interpole comme TABLEAU (refuse dans variables)
     ACI_CORE_VERSIONS: "series $[[ inputs.ansible-core-versions ]]"   # sans les optionnelles (serie par defaut)
     ACI_PRERELEASE: "$[[ inputs.ansible-core-prerelease ]]"

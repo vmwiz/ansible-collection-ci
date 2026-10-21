@@ -48,6 +48,6 @@ Les Jenkinsfile des equipes, eux, restent dans la sandbox.
 ## 4. Validation effectuee (banc, Jenkins 2.580.1)
 
 Bibliotheque chargee depuis un depot git local (`v1` et `v1.0.0`), agent statique `ansible-runner`
-(image runner + JDK 21) en airgap : voir `jenkins-shared-library/test/e2e/` et le compte rendu dans
+(image runner + JDK 21) en airgap : voir `tests/jenkins-e2e/` (banc, hors livrable) et le compte rendu dans
 `PROPOSITION.md`. Le mode Kubernetes (pod restricted-v2) est valide par schema (`test/validate-pod.sh`),
 pas sur un cluster.

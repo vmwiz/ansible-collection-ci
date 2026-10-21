@@ -20,15 +20,17 @@ vars/                     étapes publiques (une .groovy + une aide .txt chacune
   ansibleCollectionPublish
 src/org/corp/ansibleci/Config.groovy défauts, validation, matrice (méthodes @NonCPS, testées hors Jenkins)
 resources/org/corp/ansibleci/
-  aci/                    scripts bash `aci` 1.0.0 (copie de ../ci-scripts, NE PAS MODIFIER ICI)
+  aci/                    scripts bash `aci` (copie de ../ci-scripts, NE PAS MODIFIER ICI)
   pod/runner-pod.yaml     pod restricted-v2 (jnlp + runner)
-test/                     unit/ (Config), validate-pod.sh, e2e/ (Jenkins 2.580.1 réel)
+test/                     unit/ (Config), validate-pod.sh
 ```
 
 La logique métier est en bash (`aci`), partagée avec GitLab et avec l'image runner. Les étapes la
 déposent sur l'agent avec `libraryResource`, dans `@tmp/aci-<version>`, puis appellent
 `bash …/bin/aci <commande>`. Pour modifier un script : éditer `../ci-scripts`, lancer
-`../tools/sync-aci.sh`, puis committer les deux.
+`../tools/sync.sh`, puis committer les deux. `tools/sync.sh --check` (CI, banc) refuse une copie
+divergente. La copie est voulue : Jenkins charge la bibliothèque depuis SCM (`git subtree split`), elle
+ne peut pas lire `ci-scripts/` au moment de l'exécution.
 
 ## Choix techniques (vérifiés sur Jenkins 2.580.1)
 
@@ -64,4 +66,4 @@ Voir `CHANGELOG.md` : tags `vX.Y.Z` immuables + branche mobile `v1`.
 |---|---|---|
 | Unitaires `Config` | `test/unit/run.sh` | défauts AAP, validation, matrice, EE, toEnv (14 tests, groovy-all de jenkins.war) |
 | Pod | `test/validate-pod.sh` | schéma Kubernetes 1.33 strict + exigences restricted-v2 |
-| Bout en bout | `test/e2e/run-e2e.sh` | Jenkins 2.580.1 réel, bibliothèque depuis un dépôt git local (`v1`, `v1.0.0`), agent runner en airgap |
+| Bout en bout (banc, hors livrable) | `../tests/jenkins-e2e/run-e2e.sh` | Jenkins 2.580.1 réel, bibliothèque depuis un dépôt git local (`v1`, `v1.0.0`), agent runner en airgap |

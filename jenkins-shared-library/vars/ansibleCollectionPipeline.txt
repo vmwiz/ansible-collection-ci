@@ -36,7 +36,7 @@ Parametres (defaut) - toute cle inconnue ou valeur invalide arrete le build avec
     fullTestBranches       ['main','master']
     integrationCoreVersions []        defaut : [serie par defaut]
     integrationImages      ['default']  images ansible-test --docker
-    moleculeImages         ['ubuntu2404','fedora43']
+    moleculeImages         ['ubuntu2404','fedora40']
     sanityArgs / unitsArgs / integrationArgs  ''   arguments ansible-test supplementaires (chaine)
     dockerNetwork          ''         --docker-network
     coverage               false      --coverage + rapport XML

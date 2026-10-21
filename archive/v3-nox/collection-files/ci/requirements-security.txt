@@ -1,3 +1,0 @@
-# Scanners de securite (installes depuis le proxy PyPI Nexus ; versions figees dans constraints.txt)
-ansible-security-scanner
-steampunk-spotter

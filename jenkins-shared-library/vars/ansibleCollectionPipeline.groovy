@@ -4,7 +4,7 @@ import org.corp.ansibleci.Config
  * Pipeline declaratif complet de test/validation d'une collection Ansible (airgap, Nexus).
  *
  *   @Library('ansible-ci@v1') _
- *   ansibleCollectionPipeline(ansibleCoreVersions: ['2.20', '2.21'], integration: true, spotter: true,
+ *   ansibleCollectionPipeline(ansibleCoreOptional: ['2.20'], integration: true, spotter: true,
  *                             spotterEndpoint: 'https://spotter.corp.local/api')
  *
  * Reference des parametres : ansibleCollectionPipeline.txt / GUIDE-UTILISATEUR.md.

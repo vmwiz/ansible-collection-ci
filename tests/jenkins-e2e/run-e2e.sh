@@ -5,15 +5,15 @@
 #               images localhost/jk:test (Jenkins) et localhost/ansible-collection-runner:ubi9-v4.
 #   usage : sudo -E ./run-e2e.sh            -> logs dans $OUT (defaut /tmp/jk/out)
 set -euo pipefail
-here=$(cd "$(dirname "$0")" && pwd); repo=$(cd "$here/../../.." && pwd)
+here=$(cd "$(dirname "$0")" && pwd); repo=$(cd "$here/../.." && pwd)
 W=${W:-/tmp/jk}; OUT=${OUT:-$W/out}; P="sudo podman"
 mkdir -p "$W/repos" "$W/shared" "$OUT"; chmod 777 "$W/shared"
 
 # 1) depots git locaux : bibliotheque (tag v1.0.0 + branche mobile v1) et collection consommatrice
 rm -rf "$W/repos"/* "$W/src"; mkdir -p "$W/src"
-"$repo/tools/sync-aci.sh" --check
+"$repo/tools/sync.sh" --check
 cp -r "$repo/jenkins-shared-library" "$W/src/ansible-ci"
-(cd "$W/src/ansible-ci" && rm -rf test/e2e/out && git init -q -b main && git add -A &&
+(cd "$W/src/ansible-ci" && git init -q -b main && git add -A &&
   git -c user.name=ci -c user.email=ci@corp.local commit -qm "ansible-ci $(cat resources/org/corp/ansibleci/aci/VERSION)" &&
   git tag v1.0.0 && git branch v1 && git clone -q --bare . "$W/repos/ansible-ci.git")
 cp -r "$repo/exemple-collection/corp.demo" "$W/src/corp.demo"

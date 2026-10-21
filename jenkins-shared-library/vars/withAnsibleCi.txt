@@ -5,6 +5,6 @@ Exemple :
         checkout scm
         withAnsibleCi(galaxyServerUrl: 'https://nexus.corp.local/repository/ansible-group/') {
             ansibleLint(); ansibleCollectionBuild()
-            withAnsibleCore('2.21') { ansibleTestSanity(testMode: 'venv') }
+            withAnsibleCore('2.18') { ansibleTestSanity(testMode: 'venv') }
         }
     }

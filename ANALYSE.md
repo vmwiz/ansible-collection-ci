@@ -103,6 +103,12 @@ Conventions de pilotage : `ci_complete` / `ci_coverage` dans le message de commi
 
 ## 5. Enseignements pour notre contexte (airgap, Jenkins + GitLab)
 
+> **Note (v4 / v1.0.1)** : les points 1 et 2 ci-dessous sont les conclusions de la v3 (nox). Le *principe*
+> est conservé (toute la logique en un seul endroit, la CI ne fait qu'orchestrer), mais il est désormais
+> porté par le CLI bash `aci` des bibliothèques centrales, sans `noxfile.py` dans les collections
+> (voir PROPOSITION §1 et §21.2). Les relevés de cette analyse (séries 2.19 → 2.22 observées en amont)
+> décrivent l'existant upstream ; la matrice retenue pour AAP 2.6 est 2.16 + 2.18 (+ 2.20 optionnelle).
+
 1. **Le pattern antsibull-nox est le bon** : toute la logique est dans le dépôt (`noxfile.py`) et l'outil de CI ne fait qu'appeler `nox -e <session>`. C'est ce qui permet à community.general de tourner à l'identique sur GHA, sur AZP et en local. Pour nous, la même chose vaudra pour Jenkins et GitLab.
 2. En revanche, **antsibull-nox et tox-ansible téléchargent ansible-core depuis GitHub**, et les actions GHA réutilisables ne sont pas transposables. On garde donc le *principe* (nox), avec un `noxfile.py` maîtrisé qui installe ansible-core depuis PyPI, donc via Nexus.
 3. `--docker default` reste la méthode de référence. Il faut seulement fournir les images `quay.io/ansible/*` **sous leur nom exact** et rediriger pip dans les conteneurs.

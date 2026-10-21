@@ -6,6 +6,14 @@ Versions SemVer, tags `x.y.z` (format exige par le catalogue CI/CD), alignees su
 * mineure : nouvel input (avec defaut), nouveau job desactive par defaut, mise a jour d'outil compatible ;
 * majeure : input renomme/supprime, defaut modifie (ex. matrice ansible-core), version majeure de `aci`.
 
+## 1.0.1 - 2026-10-21
+
+* Correctif : `molecule-images` par defaut `ubuntu2404 fedora40` (alias valides en ansible-core 2.18).
+* `ACI_EXPECTED_VERSION` 1.0.1 ; image runner : Python 3.12 seul (326 Mo), python3.14 optionnel.
+* `tests/` du composant reduit a la validation (rendu + schema) et a la collection d'essai (copie
+  synchronisee par `tools/sync.sh`) ; l'execution des jobs sur le banc est dans `tests/gitlab-jobs/`
+  du depot source.
+
 ## 1.0.0 - 2026-10-20
 
 * Premiere version : controles statiques, ansible-test sanity/units (venv dans les pods, docker sur la

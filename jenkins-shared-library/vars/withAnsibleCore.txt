@@ -1,3 +1,4 @@
 withAnsibleCore(String version) { ... } - fixe la serie ansible-core du bloc (et donc le Python controleur :
-table 2.19 -> 3.13/3.12/3.11, 2.20-2.21 -> 3.14/3.13/3.12, 2.22 -> 3.15/3.14/3.13, premier disponible).
-Exemple : ['2.20', '2.21'].each { c -> withAnsibleCore(c) { ansibleTestSanity() } }
+table share/aci/python-map.txt : 2.16, 2.18 et 2.20 -> 3.12 en premier ; 2.22 -> 3.15/3.14/3.13 ;
+premier Python present sur l'agent).
+Exemple : ['2.16', '2.18'].each { c -> withAnsibleCore(c) { ansibleTestSanity() } }

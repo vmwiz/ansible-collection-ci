@@ -7,7 +7,7 @@
 # Usage : run-jobs.sh INPUTS CONTEXTE "job[:cellule-json] ..."     Sortie : $OUT/<job>.log + resultats.txt
 set -uo pipefail
 here=$(cd "$(dirname "$0")" && pwd); root=$(cd "$here/../.." && pwd)
-T=$here/../templates/ansible-collection/template.yml
+G=$root/gitlab-ci-templates; T=$G/templates/ansible-collection/template.yml
 inputs=$1 ctx=$2 jobs=$3
 OUT=${OUT:-/tmp/gl/out}; W=${W:-/tmp/gl/work}; IMAGE=${IMAGE:-localhost/ansible-collection-runner:ubi9-v4}
 REPO=${REPO:-/tmp/gl/repos/corp-demo.git}
@@ -20,7 +20,7 @@ run_one() {
   git clone -q "$REPO" "$dir"
   if [ "$ctx" = mr ]; then git -C "$dir" checkout -q "${MR_BRANCH:-feature}"; fi
   [ -f "$W/ee-matrix.txt" ] && mkdir -p "$dir/reports/ee" && cp "$W/ee-matrix.txt" "$dir/reports/ee/matrix.txt"
-  python3 "$here/render.py" "$T" -i "$inputs" --job "$name" --context "$ctx" --cell "$cell" --emit "$W/$slug/job.sh" || return 1
+  python3 "$G/tests/render.py" "$T" -i "$inputs" --job "$name" --context "$ctx" --cell "$cell" --emit "$W/$slug/job.sh" || return 1
   if [ "$name" = aci-ee-introspect ]; then   # VM ansible-builder : runner shell, aci de ci-scripts
     (cd "$dir" && ACI_CACHE=/tmp/aci-cache bash -c "$(sed "s#^export ACI=.*#export ACI=$root/ci-scripts/bin/aci#" "$W/$slug/job.sh")") > "$OUT/$slug.log" 2>&1
     rc=$?; [ -f "$dir/reports/ee/matrix.txt" ] && cp "$dir/reports/ee/matrix.txt" "$W/ee-matrix.txt"
@@ -35,7 +35,7 @@ run_one() {
   fi
   echo "$spec rc=$rc" | tee -a "$OUT/resultats.txt"
 }
-export -f run_one; export here root T inputs ctx OUT W IMAGE REPO
+export -f run_one; export here root G T inputs ctx OUT W IMAGE REPO
 : > "$OUT/resultats.txt"
 for j in $jobs; do case $j in aci-ee-introspect*) run_one "$j" ;; esac; done
 # shellcheck disable=SC2086  # liste de jobs separes par des espaces

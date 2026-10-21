@@ -1,4 +1,4 @@
-// withAnsibleCi(galaxyServerUrl: '...', ansibleCoreVersions: ['2.20','2.21']) { ... etapes granulaires ... }
+// withAnsibleCi(galaxyServerUrl: '...', ansibleCoreVersions: ['2.16','2.18']) { ... etapes granulaires ... }
 // Pour les pipelines scriptes : valide UNE fois la configuration (memes cles qu'ansibleCollectionPipeline,
 // memes defauts) et la fournit a toutes les etapes du bloc. A appeler DANS un node.
 // Aide : withAnsibleCi.txt

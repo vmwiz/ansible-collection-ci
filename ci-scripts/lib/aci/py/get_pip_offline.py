@@ -1,4 +1,4 @@
-"""Remplacant airgap des scripts get-pip d'ansible-test (mode ANSIBLE_TEST_MODE=venv).
+"""Remplacant airgap des scripts get-pip d'ansible-test (mode venv : ACI_TEST_MODE=venv).
 
 Contexte (ansible_test/_util/target/setup/requirements.py, fonction bootstrap) : ansible-test cree
 ses venvs SANS pip (`python -m venv --without-pip`) puis execute
@@ -24,7 +24,7 @@ GET_PIP_ONLY = {"--no-setuptools", "--no-wheel"}
 
 
 def seed() -> None:
-    import ansible_test  # venv de la session nox
+    import ansible_test  # venv de la serie (aci)
 
     src = os.path.join(os.path.dirname(ansible_test.__file__), "_internal", "python_requirements.py")
     with open(src, encoding="utf-8") as f:

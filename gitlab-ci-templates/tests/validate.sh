@@ -13,7 +13,7 @@ if [ -z "$schema" ]; then
 fi
 T=templates/ansible-collection/template.yml out=$(mktemp -d) fail=0
 ok() { echo "ok   $*"; }; ko() { echo "KO   $*"; fail=1; }
-for i in tests/inputs/minimal.yml tests/inputs/complet.yml tests/inputs/banc.yml; do
+for i in tests/inputs/minimal.yml tests/inputs/complet.yml; do
   n=$(basename "$i" .yml)
   if python3 tests/render.py "$T" -i "$i" --out "$out/$n.yml" &&
      check-jsonschema -q --schemafile "$schema" "$out/$n.yml" "$out/$n.spec.yml"; then ok "rendu + schema : $n"; else ko "rendu + schema : $n"; fi

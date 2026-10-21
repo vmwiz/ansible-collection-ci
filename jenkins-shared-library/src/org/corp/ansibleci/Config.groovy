@@ -45,7 +45,7 @@ class Config implements Serializable {
         fullTestBranches       : ['main', 'master'],
         integrationCoreVersions: [],
         integrationImages      : ['default'],
-        moleculeImages         : ['ubuntu2404', 'fedora43'],
+        moleculeImages         : ['ubuntu2404', 'fedora40'],
         sanityArgs             : '',
         unitsArgs              : '',
         integrationArgs        : '',
@@ -100,7 +100,7 @@ class Config implements Serializable {
     static final List URL_KEYS = ['pipIndexUrl', 'pypiEndpoint', 'galaxyServerUrl', 'galaxyPublishUrl', 'spotterEndpoint']
     static final List SPECIAL_CORES = ['devel', 'milestone']
 
-    /** Lit python-map.txt : "2.20  3.14 3.13 3.12" -> ['2.20': ['3.14','3.13','3.12']] (ordre conserve). */
+    /** Lit python-map.txt : "2.20  3.12 3.13 3.14" -> ['2.20': ['3.12','3.13','3.14']] (ordre conserve). */
     @NonCPS
     static Map parsePythonMap(String text) {
         Map map = [:]
@@ -142,7 +142,7 @@ class Config implements Serializable {
         // tables Python : celle de la bibliotheque + surcharges pythonMap
         Map pyMap = new LinkedHashMap(known)
         (cfg.pythonMap ?: [:]).each { c, pys ->
-            if (!(pys instanceof List) || pys.isEmpty()) { errors << "pythonMap['${c}'] doit etre une liste non vide, ex. ['3.14', '3.13']" }
+            if (!(pys instanceof List) || pys.isEmpty()) { errors << "pythonMap['${c}'] doit etre une liste non vide, ex. ['3.12', '3.11']" }
             else { pyMap[c.toString()] = pys.collect { it.toString() } }
         }
         cfg.supportedCores = pyMap.keySet() as List

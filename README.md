@@ -1,6 +1,6 @@
 # ansible-ci : bibliothèques CI pour collections Ansible (Jenkins + GitLab, airgap/Nexus, AAP 2.6)
 
-Version **1.0.0** (v4 de la proposition). Une collection n'a plus de code CI, seulement deux à trois
+Version **1.0.1** (v4 de la proposition). Une collection n'a plus de code CI, seulement deux à trois
 lignes :
 
 ```groovy
@@ -18,29 +18,33 @@ include:
 | [GUIDE-UTILISATEUR.md](GUIDE-UTILISATEUR.md) | Pour les équipes : `Jenkinsfile` et `.gitlab-ci.yml` minimaux et complets à copier-coller, FAQ |
 | [ANALYSE.md](ANALYSE.md) | Étude des CI de 23 collections `ansible-collections/*` |
 | `ci-scripts/` | **Source unique** du CLI bash `aci` (`bin/aci`, `lib/aci/cmd/*.sh`, helpers Python, `share/aci/` : versions figées, `python-map.txt`, `certification.env`) + `tests/` (smoke, guards) |
-| `jenkins-shared-library/` | Bibliothèque partagée : `vars/` (pipeline déclaratif + 18 étapes, aide `.txt`), `src/` (Config @NonCPS), `resources/` (copie d'`aci`, pod restricted-v2), `test/` (unitaires, pod, e2e Jenkins), `CHANGELOG.md` |
-| `gitlab-ci-templates/` | Composant CI/CD `ansible-collection` (`templates/ansible-collection/template.yml`, 46 inputs), exemples, `tests/` (rendu + schéma GitLab + exécution réelle des jobs), `CHANGELOG.md` |
-| `tools/sync-aci.sh` | Copie `ci-scripts/` dans la bibliothèque Jenkins (`--check` : vérifie la copie) |
-| `infra/runner-image/` | Image runner UBI 9 + python3.12/3.14 + `aci` dans `/opt/ansible-ci` (contexte de build = racine du dépôt) |
-| `infra/ansible-builder-vm/` | Playbook de la VM podman (agent Jenkins / runner GitLab shell), installe `aci` |
-| `infra/jenkins/`, `infra/gitlab-runner/`, `infra/openshift/`, `infra/podman/`, `infra/test-images/` | Déclaration de la bibliothèque (JCasC), runners, options OpenShift, miroirs, images dérivées |
+| `jenkins-shared-library/` | Bibliothèque partagée : `vars/` (pipeline déclaratif + 18 étapes, aide `.txt`), `src/` (Config @NonCPS), `resources/` (copie d'`aci`, pod restricted-v2), `test/` (unitaires, pod), `CHANGELOG.md` |
+| `gitlab-ci-templates/` | Composant CI/CD `ansible-collection` (`templates/ansible-collection/template.yml`, 46 inputs), exemples, `tests/` (rendu émulé + schéma GitLab, collection d'essai du pipeline du composant), `CHANGELOG.md` |
+| `tools/sync.sh` | Régénère les deux copies volontaires (`aci` dans la bibliothèque Jenkins, `corp.demo` dans les tests du composant) ; `--check` échoue si elles divergent |
+| `infra/runner-image/` | Image runner UBI 9 + python3.12 + `aci` dans `/opt/ansible-ci` (contexte de build = racine du dépôt) |
+| `infra/ansible-builder-vm/` | Playbook de la VM podman (agent Jenkins / runner GitLab shell), installe `aci` et les miroirs `registries.conf` |
+| `infra/jenkins/`, `infra/gitlab-runner/`, `infra/openshift/` | Déclaration de la bibliothèque (JCasC), runners GitLab, options OpenShift (POC podman imbriqué) |
 | `exemple-collection/corp.demo/` | Collection de démonstration (Jenkinsfile + .gitlab-ci.yml v4) |
-| `archive/v3-nox/` | Version précédente (nox), aussi au tag git `v3-nox` |
+| `tests/` | **Banc de test interne, hors livrable** : Jenkins 2.580.1 de bout en bout, exécution réelle des jobs GitLab rendus, image de base émulée (voir `tests/README.md`) |
+
+La v3 (nox) n'est plus livrée : historique git, tag `v3-nox`.
 
 ## Mainteneurs CI : cycle de développement
 
 ```bash
 # 1. Modifier ci-scripts/, puis
-tools/sync-aci.sh && ci-scripts/tests/smoke.sh && ci-scripts/tests/guards.sh
+tools/sync.sh && ci-scripts/tests/smoke.sh && ci-scripts/tests/guards.sh
 shellcheck -x ci-scripts/bin/aci ci-scripts/lib/aci/*.sh ci-scripts/lib/aci/cmd/*.sh
 # 2. Bibliothèque Jenkins
 jenkins-shared-library/test/unit/run.sh          # Config (14 tests)
 jenkins-shared-library/test/validate-pod.sh      # pod restricted-v2
-jenkins-shared-library/test/e2e/run-e2e.sh       # Jenkins 2.580.1 réel + corp.demo (banc airgap)
+tools/sync.sh --check                            # copies à jour (aussi exécuté par le banc)
 # 3. Composant GitLab
 gitlab-ci-templates/tests/validate.sh            # rendu + schéma officiel + jobs par contexte
-gitlab-ci-templates/tests/run-jobs.sh gitlab-ci-templates/tests/inputs/banc.yml branch "aci-lint aci-certification"
-# 4. Image runner
+# 4. Banc (hors livrable, tests/README.md) : Jenkins réel + jobs GitLab rendus exécutés en airgap
+tests/jenkins-e2e/run-e2e.sh
+tests/gitlab-jobs/run-jobs.sh tests/gitlab-jobs/inputs/banc.yml branch "aci-lint aci-certification"
+# 5. Image runner
 podman build -f infra/runner-image/Dockerfile --build-arg BASE_IMAGE=<registre>/corp/ubi9-corp:9.8 \
   -t nexus.corp.local:8443/ci/ansible-collection-runner:2026.10 .
 ```

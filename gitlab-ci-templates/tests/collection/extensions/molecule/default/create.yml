@@ -10,7 +10,7 @@
         image: "{{ hostvars[item].molecule_image }}"
         state: started
         systemd: "always"
-        pull: never  # images deja tirees du Nexus par ci/prime_images.py
+        pull: never  # images deja tirees du Nexus par aci prime-images
       loop: "{{ groups['molecule'] }}"
 
 - name: Verifier que les cibles repondent

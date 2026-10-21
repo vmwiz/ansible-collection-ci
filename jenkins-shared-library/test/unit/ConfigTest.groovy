@@ -99,7 +99,7 @@ check('targetEEs : exclusif, matrice derivee') {
 }
 check('exemple complet du GUIDE-UTILISATEUR') {
     def r = resolve([ansibleCoreVersions: ['2.16', '2.18'], ansibleCoreOptional: ['2.20'], integration: true,
-        integrationImages: ['default', 'ubuntu2404'], molecule: true, moleculeImages: ['ubuntu2404', 'fedora43'],
+        integrationImages: ['default', 'ubuntu2404'], molecule: true, moleculeImages: ['ubuntu2404', 'fedora40'],
         spotter: true, spotterEndpoint: 'https://spotter.corp.local/api', spotterBlocking: false, testMode: 'auto',
         fullTestBranches: ['main', 'stable-1'], sanityArgs: '', coverage: false, securityFailOn: 'high',
         changelogSkipToken: 'skip-changelog', timeoutMinutes: 120, extraEnv: [MY_TEST_ENDPOINT: 'https://api.corp.local']])

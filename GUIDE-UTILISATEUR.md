@@ -65,7 +65,7 @@ ansibleCollectionPipeline(
     integration      : true,
     integrationImages: ['default', 'ubuntu2404'],
     molecule         : true,
-    moleculeImages   : ['ubuntu2404', 'fedora43'],
+    moleculeImages   : ['ubuntu2404', 'fedora40'],
     spotter          : true,
     spotterEndpoint  : 'https://spotter.corp.local/api',
     spotterBlocking  : false,

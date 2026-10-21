@@ -18,9 +18,11 @@ Points verifies lors de la validation (podman 5.4, rootless, cgroup v2) :
   puis `can only create exec sessions on running containers`.
   Controle : `cat /sys/fs/cgroup/user.slice/user-$(id -u).slice/user@$(id -u).service/cgroup.controllers`.
 * Jobs lances sans session logind (runner GitLab via `su`) : definir `XDG_RUNTIME_DIR=/run/user/<uid>`.
-* Python : `builder_python` (python3.14, venv d'outillage `/opt/ansible-ci`) + `builder_extra_pythons`
-  (python3.12 : ansible-core 2.16/2.18 d'AAP 2.6 et certification). Pythons controleur : 2.16 = 3.10-3.12,
-  2.18/2.19 = 3.11-3.13, 2.20/2.21 = 3.12-3.14, 2.22 = 3.13-3.15 ; AppStream RHEL 9.8 fournit 3.11, 3.12 et 3.14.
+* Python : `builder_python` (python3.12, porte aussi le venv d'outillage `/opt/ansible-ci`). 3.12 couvre
+  2.16 (3.10-3.12), 2.18 (3.11-3.13), 2.20 (3.12-3.14) et la certification. `builder_extra_pythons` (vide par
+  defaut) : ajouter `python3.14` seulement pour 2.22 / `milestone` / `devel` (AppStream RHEL 9.8 : pas de 3.13).
+* `templates/registries-nexus.conf` : miroirs podman (quay.io, docker.io, ghcr.io) vers Nexus,
+  depose dans `/etc/containers/registries.conf.d/`.
 * Scripts `aci` : copies de `ci-scripts/` (meme version que l'image runner) dans `/opt/ansible-ci`
   (`/opt/ansible-ci/bin/aci`, chemin utilise par le composant GitLab et par Jenkins `scriptsFrom: 'agent'`).
   Lancer le playbook depuis un checkout du tag `v1.x.y` du depot. Par defaut Jenkins n'en a pas besoin

@@ -21,13 +21,13 @@ ARG BASE_IMAGE=nexus.corp.local:8443/corp/ubi9-corp:9.8
 FROM ${BASE_IMAGE}
 
 # Pythons CONTROLEUR d'ansible-test (CONTROLLER_PYTHON_VERSIONS des branches stable-X.Y) :
-#   2.16 : 3.10-3.12 ; 2.18 et 2.19 : 3.11-3.13 ; 2.20 et 2.21 : 3.12-3.14 ; 2.22 : 3.13-3.15.
-# AAP 2.6 (ansible-core 2.16 / 2.18) : EE en Python 3.12 -> 3.12 est OBLIGATOIRE (seul Python commun
-# 2.16 -> 2.21, et celui des EE). AppStream RHEL 9.8 propose python3.11, 3.12 et 3.14 (pas de 3.13)
-# -> 3.12 (2.16, 2.18, certification) + 3.14 (2.20 -> 2.22 en plus). Choix par serie : table
-# ci-scripts/share/aci/python-map.txt (2.16/2.18 -> 3.12 en premier, comme les EE AAP).
-# Le python3 systeme de RHEL 9 (3.9) est conserve tel quel. Le DERNIER de la liste porte le venv d'outils.
-ARG PYTHON_VERSIONS="3.12 3.14"
+#   2.16 : 3.10-3.12 ; 2.18 : 3.11-3.13 ; 2.20 : 3.12-3.14 ; 2.22 : 3.13-3.15.
+# 3.12 couvre toute la matrice AAP 2.6 (2.16, 2.18), la serie optionnelle 2.20 et la certification ; c'est
+# aussi le Python des EE. Il est le seul installe par defaut. Ajouter 3.14 (AppStream RHEL 9.8 ; pas de 3.13)
+# uniquement pour tester 2.22 / milestone / devel : --build-arg PYTHON_VERSIONS="3.12 3.14".
+# Choix par serie : ci-scripts/share/aci/python-map.txt. Le python3 systeme de RHEL 9 (3.9) est conserve.
+# Le DERNIER de la liste porte le venv d'outils.
+ARG PYTHON_VERSIONS="3.12"
 # shellcheck : "pip" (shellcheck-py depuis Nexus, defaut), "rpm" (ShellCheck d'EPEL 9 via le miroir interne)
 # ou "none" (le test sanity shellcheck est alors ignore en mode --venv).
 ARG SHELLCHECK_SOURCE=pip
@@ -65,8 +65,8 @@ ENV PATH=/opt/ansible-ci/bin:${PATH} \
 
 # 3) Utilisateur non-root compatible OpenShift : UID arbitraire, toujours membre du GID 0.
 #    HOME appartient au groupe 0 avec les droits du proprietaire (chgrp 0 + chmod g=u).
-#    Le get-pip d'ansible-test --venv n'est pas pre-depose : `aci sanity|units` installe
-#    get_pip_offline.py (ensurepip + pip depuis Nexus) dans ~/.ansible/test/cache au besoin.
+#    ansible-test --venv telecharge normalement get-pip depuis Internet : `aci sanity|units` depose a la
+#    place get_pip_offline.py (ensurepip + pip depuis Nexus) dans ~/.ansible/test/cache au besoin.
 RUN set -eux; \
     useradd --uid 1001 --gid 0 --home-dir /home/ci --create-home --shell /bin/bash ci; \
     chgrp -R 0 /home/ci; chmod -R g=u /home/ci

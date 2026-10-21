@@ -8,6 +8,15 @@ ou `@Library('ansible-ci@v1.0.0')` (fige).
 * majeure : parametre renomme/supprime, defaut modifie (matrice, etape activee), version majeure de `aci`.
 Les etapes `aci*` (internes) ne font pas partie de l'API.
 
+## v1.0.1 - 2026-10-21
+
+* Correctif : `moleculeImages` par defaut `['ubuntu2404', 'fedora40']` (l'alias `fedora43` n'existe pas
+  dans ansible-test 2.16/2.18 ; valeurs valides pour la serie par defaut 2.18).
+* `aci` 1.0.1 : Python 3.12 prefere pour toutes les series qui l'acceptent (2.16 -> 2.21, dont 2.20
+  optionnelle) ; python3.14 n'est plus requis sur les agents (seulement pour 2.22 / devel).
+* Exemples d'aide (`*.txt`) alignes sur la matrice AAP 2.6 ; banc e2e deplace hors de la bibliotheque
+  (`tests/jenkins-e2e/` du depot source) ; copie `aci` controlee par `tools/sync.sh --check`.
+
 ## v1.0.0 - 2026-10-20
 
 * `ansibleCollectionPipeline(Map)` : pipeline declaratif complet, validation des parametres (cle inconnue

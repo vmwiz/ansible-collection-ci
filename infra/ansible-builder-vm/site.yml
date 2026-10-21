@@ -9,12 +9,12 @@
     builder_ci_user: jenkins
     builder_subid_start: 100000
     builder_subid_count: 65536
-    # Pythons controleur ansible-test : 2.16 -> 3.10-3.12 ; 2.18/2.19 -> 3.11-3.13 ; 2.20/2.21 -> 3.12-3.14 ;
-    # 2.22 -> 3.13-3.15. RHEL 9.8 AppStream : python3.11, 3.12, 3.14 (pas 3.13). AAP 2.6 (2.16/2.18) et la
-    # certification exigent 3.12. `aci` choisit par serie (share/aci/python-map.txt).
-    builder_python: python3.14
-    builder_extra_pythons:
-      - python3.12
+    # Pythons controleur ansible-test : 2.16 -> 3.10-3.12 ; 2.18 -> 3.11-3.13 ; 2.20 -> 3.12-3.14 ;
+    # 2.22 -> 3.13-3.15. 3.12 couvre 2.16, 2.18, 2.20 et la certification (Python des EE AAP 2.6).
+    # Ajouter python3.14 a builder_extra_pythons seulement pour 2.22 / milestone / devel.
+    # `aci` choisit par serie (share/aci/python-map.txt).
+    builder_python: python3.12
+    builder_extra_pythons: []
     builder_packages:
       - podman
       - crun
