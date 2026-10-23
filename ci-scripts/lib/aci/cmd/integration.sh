@@ -1,8 +1,8 @@
 # shellcheck shell=bash
-# aide:   integration     ansible-test integration --docker <ACI_INTEGRATION_IMAGE> (agent avec podman/docker)
+# help:   integration     ansible-test integration --docker <ACI_INTEGRATION_IMAGE> (agent with podman/docker)
 main() {
-  if [ ! -d "$ACI_SRC/tests/integration/targets" ]; then log "pas de tests/integration/targets : rien a faire"; return 0; fi
-  [ "$ACI_TEST_MODE" = docker ] || die "integration exige ACI_TEST_MODE=docker et un agent avec moteur de conteneurs (VM ansible-builder)"
+  if [ ! -d "$ACI_SRC/tests/integration/targets" ]; then log "no tests/integration/targets: nothing to do"; return 0; fi
+  [ "$ACI_TEST_MODE" = docker ] || die "integration needs ACI_TEST_MODE=docker and an agent with a container engine (ansible-builder VM)"
   local image=${ACI_INTEGRATION_IMAGE:-default}
   aci_venv core >/dev/null
   aci_test_home

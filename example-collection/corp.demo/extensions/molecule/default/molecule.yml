@@ -1,0 +1,6 @@
+---
+# "default" scenario = lifecycle manager of the targets (shared_state).
+scenario:
+  test_sequence:
+    - create
+    - destroy

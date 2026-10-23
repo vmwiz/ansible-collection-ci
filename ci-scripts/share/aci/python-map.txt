@@ -1,11 +1,11 @@
-# Series ansible-core supportees et Pythons CONTROLEUR acceptes par ansible-test, par ordre de preference.
-# Source : CONTROLLER_PYTHON_VERSIONS de test/lib/ansible_test/_util/target/common/constants.py
-# (branches stable-X.Y, releve 2026-10-20), coherent avec requires-python.
-# Fichier lu par `aci` (bash) ET par la Jenkins Shared Library (validation) : source unique.
-# serie     pythons (le premier present sur l'agent est retenu)
-# 3.12 en tete partout ou ansible-test l'accepte (2.16 -> 2.21) : c'est le Python des EE AAP 2.6/2.7 et
-# de la certification, et le seul Python obligatoire de l'image runner et de la VM. 2.22, milestone et
-# devel (controleur >= 3.13) exigent d'ajouter python3.14 (PYTHON_VERSIONS="3.12 3.14").
+# Supported ansible-core series and CONTROLLER Pythons accepted by ansible-test, in order of preference.
+# Source: CONTROLLER_PYTHON_VERSIONS in test/lib/ansible_test/_util/target/common/constants.py
+# (stable-X.Y branches, checked 2026-10-20), consistent with requires-python.
+# Read by `aci` (single source of truth).
+# series    pythons (the first one present on the agent wins)
+# 3.12 first wherever ansible-test accepts it (2.16 -> 2.21): it is the Python of the AAP 2.6/2.7 EEs and
+# of the certification, and the only Python required on the runner image and the VM. 2.22, milestone and
+# devel (controller >= 3.13) need python3.14 added (PYTHON_VERSIONS="3.12 3.14").
 2.16        3.12 3.11 3.10
 2.18        3.12 3.13 3.11
 2.19        3.12 3.13 3.11

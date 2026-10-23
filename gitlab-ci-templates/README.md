@@ -1,159 +1,160 @@
-# Composant GitLab CI/CD `ansible-collection` (ansible-ci 1.x)
+# GitLab CI/CD component `ansible-collection` (ansible-ci 1.x)
 
-Pipeline de test et de validation d'une collection Ansible pour GitLab, en airgap derrière Nexus,
-aligné sur AAP 2.6. Il exécute **les mêmes étapes et les mêmes scripts `aci`** que la bibliothèque
-Jenkins (`../jenkins-shared-library`). Les deux sont générés à partir de `../ci-scripts`.
+Test and validation pipeline for an Ansible collection on GitLab, airgapped behind Nexus and aligned
+with AAP 2.6. It runs **the same `aci` scripts** (`../ci-scripts`, baked into the runner image) as the
+Jenkins shared library (`../jenkins-shared-library`). Note: the Jenkins library is a single fixed
+pipeline without parameters, while this component still exposes the inputs listed below.
 
-## Utilisation
+## Usage
 
 ```yaml
-# .gitlab-ci.yml de la collection : c'est tout
+# .gitlab-ci.yml of the collection: that's all
 include:
   - component: $CI_SERVER_FQDN/ci/ansible-collection-ci/ansible-collection@1
 ```
 
-Le guide `../GUIDE-UTILISATEUR.md` contient aussi l'exemple complet (`examples/complet.gitlab-ci.yml`).
+`../USER-GUIDE.md` also contains the complete example (`examples/complete.gitlab-ci.yml`).
 
-* **Version** : `@1` = dernière 1.x publiée (recommandé) ; `@1.0.0` = version figée ; `@~latest` est à éviter.
-  Les tags suivent `x.y.z` (SemVer). La règle de compatibilité est décrite dans `CHANGELOG.md`.
-* **Prérequis** : GitLab ≥ 17.0 (composants et `spec:inputs` en GA). Aucune fonction plus récente n'est
-  utilisée (pas de `$[[ component.version ]]`, qui demande 18.7, ni de fonction `split`).
-* **Sans le catalogue** (projet non publié, autre instance) : on peut inclure le même fichier avec
-  `include:project`, qui accepte aussi `inputs:`. Il n'y a qu'un seul modèle à maintenir.
+* **Version**: `@1` = latest published 1.x (recommended); `@1.1.0` = pinned version; avoid `@~latest`.
+  Tags follow `x.y.z` (SemVer). The compatibility rule is described in `CHANGELOG.md`.
+* **Requirements**: GitLab ≥ 17.0 (components and `spec:inputs` GA). No newer feature is used (no
+  `$[[ component.version ]]`, which needs 18.7, and no `split` function).
+* **Without the catalog** (unpublished project, other instance): include the same file with
+  `include:project`, which also accepts `inputs:`. There is only one template to maintain.
   ```yaml
   include:
     - project: ci/ansible-collection-ci
-      ref: 1.0.0
+      ref: 1.1.0
       file: /templates/ansible-collection/template.yml
       inputs: {ansible-core-optional: '2.20'}
   ```
 
-## Runners attendus
+## Expected runners
 
-| Tag (input) | Exécuteur | Rôle |
+| Tag (input) | Executor | Role |
 |---|---|---|
-| `ansible-runner` (`runner-tags`) | Kubernetes/OpenShift, pods `restricted-v2`, image `runner-image` | Contrôles statiques, sanity/units en `venv`, certification, publication |
-| `ansible-builder` (`builder-tags`) | runner **shell** sur la VM avec podman | `aci-ee-introspect`, sanity/units en `docker`, intégration, molecule, POC EE |
+| `ansible-runner` (`runner-tags`) | Kubernetes/OpenShift, `restricted-v2` pods, image `runner-image` | Static checks, sanity/units in `venv` mode, certification, publication |
+| `ansible-builder` (`builder-tags`) | **shell** runner on the VM with podman | `aci-ee-introspect`, sanity/units in `docker` mode, integration, molecule, EE POC |
 
-Les venvs vont dans `~/.cache/ansible-ci`. Le `cache:` de GitLab n'est **pas** utilisé, parce qu'il
-impose un chemin dans le projet que lint et sanity analyseraient (problème constaté sur le banc). Pour
-accélérer les pods, montez un volume persistant sur `/home/ci/.cache/ansible-ci` dans la config du
-runner Kubernetes (`[[runners.kubernetes.volumes.pvc]]`). La VM garde son cache d'elle-même.
+Venvs go to `~/.cache/ansible-ci`. GitLab's `cache:` is **not** used, because it requires a path inside
+the project that lint and sanity would then scan (seen on the bench). To speed up the pods, mount a
+persistent volume on `/home/ci/.cache/ansible-ci` in the Kubernetes runner configuration
+(`[[runners.kubernetes.volumes.pvc]]`). The VM keeps its cache by itself.
 
-## Scripts dans l'image (`/opt/ansible-ci/bin/aci`) : évaluation et recommandation
+## Scripts in the image (`/opt/ansible-ci/bin/aci`): assessment and recommendation
 
-Un composant GitLab ne peut livrer que du YAML. Les scripts doivent donc arriver par un autre chemin.
+A GitLab component can only ship YAML, so the scripts have to arrive another way.
 
-| Option | Pour | Contre |
+| Option | Pros | Cons |
 |---|---|---|
-| **A. Intégrés à l'image runner** (`/opt/ansible-ci`) et installés sur la VM (`infra/ansible-builder-vm`) | Aucun accès réseau en job ; version figée par le tag d'image ; mêmes fichiers que Jenkins ; testé | Une évolution des scripts impose une nouvelle image |
-| B. Job qui clone le projet de scripts (`CI_JOB_TOKEN`) | Scripts découplés de l'image | Accès au projet à autoriser (allowlist du job token) ; un clone par job ; deux versions à aligner |
-| C. Scripts en ligne dans le YAML (`!reference`) | Tout tient dans le composant | Bash dupliqué, impossible à tester avec shellcheck ; limites de taille ; divergence avec Jenkins |
+| **A. Baked into the runner image** (`/opt/ansible-ci`) and installed on the VM (`infra/ansible-builder-vm`) | No network access in jobs; version pinned by the image tag; same files as Jenkins; tested | Changing the scripts requires a new image |
+| B. Job that clones the scripts project (`CI_JOB_TOKEN`) | Scripts decoupled from the image | Project access to allow (job token allowlist); one clone per job; two versions to keep aligned |
+| C. Scripts inline in the YAML (`!reference`) | Everything in the component | Duplicated bash, cannot be shellchecked; size limits; drifts from Jenkins |
 
-**Recommandation : A.**
-* Le composant fixe `ACI_EXPECTED_VERSION`. `aci` **refuse** une image dont la version majeure diffère
-  et **signale** un écart de version mineure.
-* Publiez l'image runner avec **deux tags** : le tag calendaire (`2026.10`) et le tag de version des
-  scripts (`aci-1.0.0`).
-* À chaque version du composant, mettez à jour la valeur par défaut de `runner-image` dans le même
-  commit. `tests/validate.sh` vérifie la cohérence avec `ci-scripts/VERSION`.
+**Recommendation: A.**
+* The component sets `ACI_EXPECTED_VERSION`. `aci` **refuses** an image whose major version differs
+  and **reports** a minor version drift.
+* Publish the runner image with **two tags**: the calendar tag (`2026.10`) and the scripts version tag
+  (`aci-1.1.0`).
+* For every component release, update the default `runner-image` in the same commit.
+  `tests/validate.sh` checks consistency with `ci-scripts/VERSION`.
 
-## Jobs créés
+## Created jobs
 
-| Job | Stage | Quand |
+| Job | Stage | When |
 |---|---|---|
-| `aci-ee-introspect` | `.pre` | `target-ees` non vide. Échoue tout de suite en cas d'incompatibilité (requires_ansible, plage Python, séries ≠ `ansible-core-versions`) |
-| `aci-changelog` | statique | Pipeline de MR. Exemption par label ou titre `skip-changelog` |
-| `aci-certification` | statique | Garde-fous + galaxy-importer 0.4.39 + ansible-lint 26.4.0 `--profile=production` |
-| `aci-lint`, `aci-docs`, `aci-build` (+ importer), `aci-security`, `aci-spotter` | statique | Selon les inputs. `aci-spotter` en `allow_failure` par défaut |
-| `aci-sanity-venv` / `aci-units-venv` `[ACI_CORE]` | test | Branches hors branche par défaut (ou `test-mode: venv`) |
-| `aci-sanity-docker` / `aci-units-docker` `[ACI_CORE]` | test | Tag, pipeline planifié, branche par défaut (ou `test-mode: docker`) |
-| `aci-optional-cores` | test | `ansible-core-optional`, non bloquant |
-| `aci-certification-sanity` | test | Sanity en Python 3.12 sur stable-2.16/2.18/2.20 (filtrées par requires_ansible) non couvertes en 3.12 |
+| `aci-ee-introspect` | `.pre` | `target-ees` not empty. Fails immediately on incompatibility (requires_ansible, Python range, series ≠ `ansible-core-versions`) |
+| `aci-changelog` | static | MR pipelines. Exemption with the `skip-changelog` label or title word |
+| `aci-certification` | static | Guards + galaxy-importer 0.4.39 + ansible-lint 26.4.0 `--profile=production` |
+| `aci-lint`, `aci-docs`, `aci-build` (+ importer), `aci-security`, `aci-spotter` | static | According to the inputs. `aci-spotter` is `allow_failure` by default |
+| `aci-sanity-venv` / `aci-units-venv` `[ACI_CORE]` | test | Branches other than the default branch (or `test-mode: venv`) |
+| `aci-sanity-docker` / `aci-units-docker` `[ACI_CORE]` | test | Tags, scheduled pipelines, default branch (or `test-mode: docker`) |
+| `aci-optional-cores` | test | `ansible-core-optional`, non-blocking |
+| `aci-certification-sanity` | test | Python 3.12 sanity on stable-2.16/2.18/2.20 (filtered by requires_ansible) not already covered with 3.12 |
 | `aci-integration` `[image]`, `aci-molecule` | test | `integration` / `molecule` |
-| `aci-ee-units` | test | POC **non testé** (`ee-tests` + `target-ees`), non bloquant |
-| `aci-publish` | deploy | Tag + `publish`. Attend la réussite de tous les stages précédents |
+| `aci-ee-units` | test | **Untested** POC (`ee-tests` + `target-ees`), non-blocking |
+| `aci-publish` | deploy | Tag + `publish`. Waits for all previous stages to succeed |
 
-Les jobs de test n'attendent pas les contrôles statiques (`needs`). Ils attendent seulement
-l'introspection des EE, si elle existe. Une série listée dans `ansible-core-prerelease` qui échoue sort
-avec le code 3 (`allow_failure: exit_codes: [3]`).
+Test jobs do not wait for the static checks (`needs`). They only wait for the EE introspection, when it
+exists. A failing series listed in `ansible-core-prerelease` exits with code 3
+(`allow_failure: exit_codes: [3]`).
 
-## Inputs
+## Inputs (46)
 
-| Input | Type | Defaut | Description |
+| Input | Type | Default | Description |
 |---|---|---|---|
-| `stage-static` | string | `'build'` | Stage des controles statiques (lint, docs, build, certification, securite...). |
-| `stage-test` | string | `'test'` | Stage ansible-test (sanity, units, integration) et molecule. |
-| `stage-publish` | string | `'deploy'` | Stage de publication (sur tag). |
-| `runner-image` | string | `'nexus.corp.local:8443/ci/ansible-collection-runner:2026.10'` | Image runner (contient /opt/ansible-ci/bin/aci et Python 3.12). Son tag fige les scripts. |
-| `runner-tags` | array | `['ansible-runner']` | Tags du runner Kubernetes/OpenShift (pods restricted-v2, sans moteur de conteneurs). |
-| `builder-tags` | array | `['ansible-builder']` | Tags du runner shell de la VM ansible-builder (podman, runner shell) - mode docker, integration, molecule, EE. |
-| `aci-path` | string | `'/opt/ansible-ci/bin/aci'` | Chemin des scripts aci dans l'image runner et sur la VM ansible-builder. |
-| `ansible-core-versions` | array | `['2.16', '2.18']` | Series testees, entre quotes. Avec target-ees, doit lister exactement les series des EE. |
-| `ansible-core-optional` | string | `''` | Series en plus, non bloquantes, separees par des espaces (ex. "2.20" pour AAP 2.7). |
-| `ansible-core-prerelease` | string | `''` | Series de ansible-core-versions en pre-version (rc), echec non bloquant (code 3). |
-| `ansible-core-default` | string | `''` | Serie des etapes non matricielles (defaut - derniere serie non pre-version). |
-| `target-ees` | string | `''` | Images EE cibles separees par des espaces ; introspection (fail-early) et version exacte par serie. |
+| `stage-static` | string | `'build'` | Stage of the static checks (lint, docs, build, certification, security...). |
+| `stage-test` | string | `'test'` | Stage of ansible-test (sanity, units, integration) and molecule. |
+| `stage-publish` | string | `'deploy'` | Publication stage (on tags). |
+| `runner-image` | string | `'nexus.corp.local:8443/ci/ansible-collection-runner:2026.10'` | Runner image (contains /opt/ansible-ci/bin/aci and Python 3.12). Its tag pins the scripts. |
+| `runner-tags` | array | `['ansible-runner']` | Tags of the Kubernetes/OpenShift runner (restricted-v2 pods, no container engine). |
+| `builder-tags` | array | `['ansible-builder']` | Tags of the shell runner on the ansible-builder VM (podman) - docker mode, integration, molecule, EE. |
+| `aci-path` | string | `'/opt/ansible-ci/bin/aci'` | Path of the aci scripts in the runner image and on the ansible-builder VM. |
+| `ansible-core-versions` | array | `['2.16', '2.18']` | Tested series, quoted. With target-ees, must list exactly the series of the EEs. |
+| `ansible-core-optional` | string | `''` | Extra non-blocking series, space separated (e.g. "2.20" for AAP 2.7). |
+| `ansible-core-prerelease` | string | `''` | Series of ansible-core-versions that are pre-releases (rc), non-blocking failure (code 3). |
+| `ansible-core-default` | string | `''` | Series of the non-matrix jobs (default - last series that is not a pre-release). |
+| `target-ees` | string | `''` | Target EE images, space separated; introspection (fail early) and exact version per series. |
 | `lint` | boolean | `true` | yamllint + ansible-lint + antsibull-changelog lint |
 | `docs` | boolean | `true` | antsibull-docs lint-collection-docs |
 | `build` | boolean | `true` | ansible-galaxy collection build |
-| `galaxy-importer` | boolean | `true` | galaxy-importer sur le tarball (exige build) |
+| `galaxy-importer` | boolean | `true` | galaxy-importer on the tarball (needs build) |
 | `security-scan` | boolean | `true` | ansible-security-scanner |
-| `certification` | boolean | `true` | Controles certification Red Hat (partner-certification-checker 6.0.0) |
-| `certification-sanity` | boolean | `true` | Sanity py3.12 sur stable-2.16/2.18/2.20 non couvertes par la matrice |
-| `changelog-check` | boolean | `true` | Fragment changelog obligatoire sur MR |
-| `changelog-skip-token` | string | `'skip-changelog'` | Label ou mot du titre de MR qui exempte du fragment |
+| `certification` | boolean | `true` | Red Hat certification checks (partner-certification-checker 6.0.0) |
+| `certification-sanity` | boolean | `true` | py3.12 sanity on stable-2.16/2.18/2.20 not covered by the matrix |
+| `changelog-check` | boolean | `true` | Changelog fragment required on MRs |
+| `changelog-skip-token` | string | `'skip-changelog'` | MR label or title word that exempts from the fragment |
 | `sanity` | boolean | `true` |  |
 | `units` | boolean | `true` |  |
-| `integration` | boolean | `false` | ansible-test integration --docker (VM ansible-builder) |
-| `molecule` | boolean | `false` | molecule test (VM ansible-builder) |
-| `spotter` | boolean | `false` | Steampunk Spotter (instance privee, spotter-endpoint obligatoire) |
-| `ee-tests` | boolean | `false` | POC non teste - units dans les EE de target-ees |
-| `publish` | boolean | `true` | Publication sur tag vers Nexus (ACI_GALAXY_TOKEN) |
-| `test-mode` | string | `'auto'` | auto = docker sur tag, planification et branche par defaut ; venv sinon. Valeurs : auto, venv, docker. |
-| `sanity-args` | string | `''` | Arguments ansible-test sanity supplementaires |
-| `units-args` | string | `''` | Arguments ansible-test units supplementaires |
-| `integration-args` | string | `''` | Arguments ansible-test integration supplementaires |
-| `integration-images` | array | `['default']` | Images ansible-test --docker de l'integration (une job par image). |
+| `integration` | boolean | `false` | ansible-test integration --docker (ansible-builder VM) |
+| `molecule` | boolean | `false` | molecule test (ansible-builder VM) |
+| `spotter` | boolean | `false` | Steampunk Spotter (private instance, spotter-endpoint required) |
+| `ee-tests` | boolean | `false` | Untested POC - units inside the target-ees EEs |
+| `publish` | boolean | `true` | Publication to Nexus on tags (ACI_GALAXY_TOKEN) |
+| `test-mode` | string | `'auto'` | auto = docker on tags, schedules and the default branch; venv otherwise. Values: auto, venv, docker. |
+| `sanity-args` | string | `''` | Extra ansible-test sanity arguments |
+| `units-args` | string | `''` | Extra ansible-test units arguments |
+| `integration-args` | string | `''` | Extra ansible-test integration arguments |
+| `integration-images` | array | `['default']` | ansible-test --docker images for integration (one job per image). |
 | `docker-network` | string | `''` | ansible-test --docker-network |
 | `coverage` | boolean | `false` |  |
-| `molecule-images` | string | `'ubuntu2404 fedora40'` | Images molecule separees par des espaces |
-| `pip-index-url` | string | `''` | Vide = /etc/pip.conf de l image (seul lu par ansible-test --venv) |
-| `pypi-endpoint` | string | `'https://nexus.corp.local/repository/pypi-group/simple'` | Index PyPI des conteneurs ansible-test |
-| `image-mirror` | string | `'nexus.corp.local:8444'` | Miroir des images quay.io/ansible |
+| `molecule-images` | string | `'ubuntu2404 fedora40'` | Molecule images, space separated |
+| `pip-index-url` | string | `''` | Empty = /etc/pip.conf of the image (the only one read by ansible-test --venv) |
+| `pypi-endpoint` | string | `'https://nexus.corp.local/repository/pypi-group/simple'` | PyPI index of the ansible-test containers |
+| `image-mirror` | string | `'nexus.corp.local:8444'` | Mirror of the quay.io/ansible images |
 | `galaxy-server-url` | string | `'https://nexus.corp.local/repository/ansible-group/'` |  |
 | `galaxy-publish-url` | string | `'https://nexus.corp.local/repository/ansible-hosted/'` |  |
-| `security-fail-on` | string | `'high'` | Valeurs : high, critical, none. |
-| `spotter-endpoint` | string | `''` | URL API de l instance Spotter privee |
+| `security-fail-on` | string | `'high'` | Values: high, critical, none. |
+| `spotter-endpoint` | string | `''` | API URL of the private Spotter instance |
 | `spotter-allow-failure` | boolean | `true` |  |
 | `spotter-ansible-version` | string | `'2.20'` |  |
-| `spotter-display-level` | string | `'error'` | Valeurs : hint, warning, error. |
+| `spotter-display-level` | string | `'error'` | Values: hint, warning, error. |
 
-**Secrets** : ne les passez jamais en input (les inputs apparaissent en clair dans la configuration).
-Définissez-les comme variables CI/CD **masquées** :
-* `ACI_GALAXY_TOKEN` : publication, variable **protégée** (tags protégés `*.*.*`) ;
-* `SPOTTER_TOKEN` : Spotter.
+**Secrets**: never pass them as inputs (inputs are visible in clear text in the configuration).
+Define them as **masked** CI/CD variables:
+* `ACI_GALAXY_TOKEN`: publication, **protected** variable (protected tags `*.*.*`);
+* `SPOTTER_TOKEN`: Spotter.
 
-**Pièges** :
-* Les séries ansible-core doivent être écrites **entre quotes** (`'2.20'`). Sans quotes, YAML lit `2.20`
-  comme le nombre 2.2, et `aci` refuse alors la série « inconnue ».
-* Avec `target-ees`, `ansible-core-versions` doit lister exactement les séries des EE. La matrice
-  GitLab est statique ; le job d'introspection indique la valeur à mettre.
+**Pitfalls**:
+* ansible-core series must be **quoted** (`'2.20'`). Unquoted, YAML reads `2.20` as the number 2.2,
+  and `aci` then refuses the "unknown" series.
+* With `target-ees`, `ansible-core-versions` must list exactly the series of the EEs. The GitLab matrix
+  is static; the introspection job prints the value to use.
 
-## Tests (sans instance GitLab)
+## Tests (without a GitLab instance)
 
-* `tests/validate.sh [schema.json]` :
-  * rendu des inputs (`tests/render.py` émule types, options, regex, interpolation entière ou partielle,
-    `!reference` et `extends`) ;
-  * validation du rendu et de l'en-tête `spec` avec le **schéma officiel GitLab** (`tests/gitlab-ci-schema.json`,
-    copie du `ci.json` de GitLab 19.6.0-pre) ;
-  * vérification que les inputs invalides sont refusés ;
-  * simulation des jobs créés pour chaque contexte (branche, branche par défaut, MR, tag) ;
-  * validation des exemples.
-* `../tests/gitlab-jobs/run-jobs.sh INPUTS CONTEXTE "jobs..."` (banc, hors livrable) : exécute **pour de vrai** les scripts des jobs rendus.
-  Chaque job tourne dans un clone neuf, dans l'image runner, en airgap, avec un UID arbitraire ;
-  l'introspection tourne sur l'hôte avec podman.
-* `render.py` reste une **émulation**. La validation finale se fait dans GitLab : CI Lint
-  (`/-/ci/lint`, ou l'API `POST /projects/:id/ci/lint`) et le pipeline du projet composant
-  (`.gitlab-ci.yml`), qui inclut le composant `@$CI_COMMIT_SHA` sur `tests/collection` (copie de
-  `exemple-collection/corp.demo` maintenue par `tools/sync.sh`).
+* `tests/validate.sh [schema.json]`:
+  * input rendering (`tests/render.py` emulates types, options, regex, whole or partial interpolation,
+    `!reference` and `extends`);
+  * validation of the rendered file and of the `spec` header against the **official GitLab schema**
+    (`tests/gitlab-ci-schema.json`, copy of GitLab 19.6.0-pre `ci.json`);
+  * check that invalid inputs are refused;
+  * simulation of the jobs created in each context (branch, default branch, MR, tag);
+  * validation of the examples.
+* `../tests/gitlab-jobs/run-jobs.sh INPUTS CONTEXT "jobs..."` (bench, not shipped): **really** runs the
+  scripts of the rendered jobs. Each job runs in a fresh clone, in the runner image, airgapped, with an
+  arbitrary UID; the introspection runs on the host with podman.
+* `render.py` is only an **emulation**. The final validation happens in GitLab: CI Lint
+  (`/-/ci/lint`, or the `POST /projects/:id/ci/lint` API) and the component project pipeline
+  (`.gitlab-ci.yml`), which includes the component `@$CI_COMMIT_SHA` on `tests/collection` (copy of
+  `example-collection/corp.demo` kept in sync by `tools/sync.sh`).

@@ -1,14 +1,14 @@
 ---
 argument_specs:
   main:
-    short_description: Depose /etc/motd
+    short_description: Writes /etc/motd
     description:
-      - Depose le fichier C(/etc/motd) avec le contenu de O(motd_message).
+      - Writes the file C(/etc/motd) with the content of O(motd_message).
     author:
       - coreOps
     options:
       motd_message:
         type: str
-        default: "Serveur gere par Ansible"
+        default: "Server managed by Ansible"
         description:
-          - Contenu du fichier C(/etc/motd).
+          - Content of the file C(/etc/motd).

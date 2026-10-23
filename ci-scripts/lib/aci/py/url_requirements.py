@@ -1,7 +1,7 @@
-"""Liste les tests sanity d'ansible-test dont les exigences pip sont des URL directes (helper interne).
+"""Lists the ansible-test sanity tests whose pip requirements are direct URLs (internal helper).
 
-Exemple : ansible-core 2.22, test pylint -> `dill @ https://github.com/...zip`. Un proxy PyPI (Nexus)
-ne peut pas servir ces exigences : en mode --venv, `aci sanity` ignore ces tests (--skip-test).
+Example: ansible-core 2.22, pylint test -> `dill @ https://github.com/...zip`. A PyPI proxy (Nexus)
+cannot serve such requirements: in --venv mode, `aci sanity` skips these tests (--skip-test).
 """
 import glob
 import os

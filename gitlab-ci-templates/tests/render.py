@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Banc hors GitLab pour le composant : rendu des inputs, resolution de !reference/extends,
-evaluation des rules (sous-ensemble du langage d'expressions GitLab) et export d'un job.
+"""Off-GitLab test bench for the component: input rendering, !reference/extends resolution,
+rules evaluation (subset of the GitLab expression language) and export of a job.
 
-  render.py TEMPLATE [-i inputs.yml] [--out rendered.yml]           rendu (pour check-jsonschema)
-  render.py TEMPLATE -i inputs.yml --jobs CONTEXTE                   jobs crees (CONTEXTE: mr|branch|default|tag)
-  render.py TEMPLATE -i inputs.yml --job NOM --context C --emit F    script shell du job (variables + script)
+  render.py TEMPLATE [-i inputs.yml] [--out rendered.yml]           render (for check-jsonschema)
+  render.py TEMPLATE -i inputs.yml --jobs CONTEXT                    created jobs (CONTEXT: mr|branch|default|tag)
+  render.py TEMPLATE -i inputs.yml --job NAME --context C --emit F   shell script of the job (variables + script)
 
-Emulation volontairement limitee (types/options/regex des inputs, interpolation entiere/partielle,
-!reference, extends avec fusion profonde, parallel:matrix, rules if/when). Ce n'est PAS GitLab :
-la validation finale reste celle de GitLab (CI Lint) - voir README.md.
+Deliberately limited emulation (input types/options/regex, whole/partial interpolation,
+!reference, extends with deep merge, parallel:matrix, rules if/when). This is NOT GitLab:
+the final validation is GitLab's own (CI Lint) - see README.md.
 """
 import argparse, copy, json, re, sys
 import yaml
@@ -24,20 +24,20 @@ class Loader(yaml.SafeLoader):
 Loader.add_constructor("!reference", lambda l, n: Ref(l.construct_sequence(n)))
 
 def die(msg):
-    sys.exit(f"render.py : {msg}")
+    sys.exit(f"render.py: {msg}")
 
 def as_string(v):
     if isinstance(v, bool):
         return "true" if v else "false"
     if isinstance(v, list):
-        return json.dumps(v, ensure_ascii=False)          # representation Ruby d'un tableau de chaines
+        return json.dumps(v, ensure_ascii=False)          # Ruby representation of an array of strings
     return str(v)
 
 def check_inputs(spec, given):
     errors, values = [], {}
     for k in given:
         if k not in spec:
-            errors.append(f"input inconnu '{k}'")
+            errors.append(f"unknown input '{k}'")
     for k, d in spec.items():
         d = d or {}
         typ = d.get("type", "string")
@@ -46,18 +46,18 @@ def check_inputs(spec, given):
         elif "default" in d:
             v = d["default"]
         else:
-            errors.append(f"input obligatoire '{k}' absent"); continue
+            errors.append(f"required input '{k}' missing"); continue
         ok = {"string": isinstance(v, str), "boolean": isinstance(v, bool), "array": isinstance(v, list),
               "number": isinstance(v, (int, float)) and not isinstance(v, bool)}[typ]
         if not ok:
-            errors.append(f"input '{k}' : type {typ} attendu, recu {v!r}")
+            errors.append(f"input '{k}': type {typ} expected, got {v!r}")
         if "options" in d and typ != "array" and v not in d["options"]:
-            errors.append(f"input '{k}' : '{v}' hors options {d['options']}")
+            errors.append(f"input '{k}': '{v}' not in options {d['options']}")
         if "regex" in d and isinstance(v, str) and not re.search(d["regex"], v):
-            errors.append(f"input '{k}' : '{v}' ne respecte pas {d['regex']}")
+            errors.append(f"input '{k}': '{v}' does not match {d['regex']}")
         values[k] = v
     if errors:
-        die("inputs invalides :\n  " + "\n  ".join(errors))
+        die("invalid inputs:\n  " + "\n  ".join(errors))
     return values
 
 def interpolate(node, values):
@@ -69,7 +69,7 @@ def interpolate(node, values):
         out = []
         for item in node:
             if isinstance(item, str) and INTERP.fullmatch(item.strip()) and isinstance(values[INTERP.fullmatch(item.strip()).group(1)], list):
-                out.extend(values[INTERP.fullmatch(item.strip()).group(1)])   # tableau = element entier : fusion
+                out.extend(values[INTERP.fullmatch(item.strip()).group(1)])   # array = whole item: merged
             else:
                 out.append(interpolate(item, values))
         return out
@@ -93,7 +93,7 @@ def resolve_refs(node, root):
         for item in node:
             r = resolve_refs(item, root)
             if isinstance(item, Ref) and isinstance(r, list):
-                out.extend(r)                 # GitLab aplatit les tableaux imbriques (rules, script)
+                out.extend(r)                 # GitLab flattens nested arrays (rules, script)
             else:
                 out.append(r)
         return out
@@ -103,12 +103,12 @@ def render(path, given):
     text = open(path, encoding="utf-8").read()
     docs = list(yaml.load_all(text, Loader=Loader))
     if len(docs) != 2 or "spec" not in docs[0]:
-        die("en-tete spec + '---' + corps attendus")
+        die("expected a spec header + '---' + body")
     values = check_inputs(docs[0]["spec"]["inputs"], given)
     body = interpolate(docs[1], values)
     leftover = INTERP.findall(yaml.dump(body, Dumper=yaml.SafeDumper) if not _has_ref(body) else str(body))
     if leftover:
-        die(f"interpolations non resolues : {leftover}")
+        die(f"unresolved interpolations: {leftover}")
     return docs[0], resolve_refs(body, body)
 
 def _has_ref(n):
@@ -128,12 +128,12 @@ def deep_merge(a, b):
 
 def expand(cfg, name, seen=()):
     job = cfg[name]
-    if name in seen: die(f"extends circulaire {name}")
+    if name in seen: die(f"circular extends {name}")
     parents = job.get("extends", [])
     parents = [parents] if isinstance(parents, str) else parents
     base = {}
     for p in parents:
-        if p not in cfg: die(f"{name} : extends '{p}' introuvable")
+        if p not in cfg: die(f"{name}: extends '{p}' not found")
         base = deep_merge(base, expand(cfg, p, seen + (name,)))
     merged = deep_merge(base, {k: v for k, v in job.items() if k != "extends"})
     return merged
@@ -144,7 +144,7 @@ def evaluate(expr, env):
     toks, pos = [], 0
     while pos < len(expr.rstrip()):
         m = TOKEN.match(expr, pos)
-        if not m: die(f"expression non geree : {expr!r} (position {pos})")
+        if not m: die(f"unsupported expression: {expr!r} (position {pos})")
         toks.append(m.group(1)); pos = m.end()
     def val(t):
         if t.startswith("$"): return env.get(t[1:]) or None
@@ -169,7 +169,7 @@ def evaluate(expr, env):
             return ((a or None) == (b or None)) == (toks[i] == "=="), i + 2
         return a, i
     v, i = parse_or(0)
-    if i != len(toks): die(f"expression mal formee : {expr!r}")
+    if i != len(toks): die(f"malformed expression: {expr!r}")
     return bool(v)
 
 def job_when(job, env):
@@ -236,7 +236,7 @@ def main():
         with open(a.emit, "w") as f:
             f.write("set -eo pipefail\n")
             for k, v in env.items():
-                # comme GitLab : les $VARIABLES contenues dans les valeurs sont developpees a l'execution
+                # like GitLab: $VARIABLES inside values are expanded at run time
                 q = str(v).replace("\\", "\\\\").replace('"', '\\"').replace("`", "\\`")
                 f.write(f'export {k}="{q}"\n')
             for line in job.get("before_script", []) + job["script"]:

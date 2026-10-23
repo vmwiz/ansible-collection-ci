@@ -1,8 +1,0 @@
----
-- name: Deposer /etc/motd
-  ansible.builtin.copy:
-    dest: /etc/motd
-    content: "{{ motd_message }}\n"
-    owner: root
-    group: root
-    mode: "0644"

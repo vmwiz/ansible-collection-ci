@@ -1,7 +1,0 @@
----
-# Profil impose par la certification Red Hat (partner-certification-checker)
-profile: production
-exclude_paths:
-  - extensions/molecule/
-warn_list:
-  - no-log-password

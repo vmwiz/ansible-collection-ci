@@ -1,16 +1,16 @@
-"""Remplacant airgap des scripts get-pip d'ansible-test (mode venv : ACI_TEST_MODE=venv).
+"""Airgapped replacement for the ansible-test get-pip scripts (venv mode: ACI_TEST_MODE=venv).
 
-Contexte (ansible_test/_util/target/setup/requirements.py, fonction bootstrap) : ansible-test cree
-ses venvs SANS pip (`python -m venv --without-pip`) puis execute
-~/.ansible/test/cache/get_pip_<X_Y>.py, telecharge sinon depuis
+Context (ansible_test/_util/target/setup/requirements.py, bootstrap function): ansible-test creates
+its venvs WITHOUT pip (`python -m venv --without-pip`) and then runs
+~/.ansible/test/cache/get_pip_<X_Y>.py, otherwise downloaded from
 https://ci-files.testing.ansible.com/ansible-test/get-pip-<X.Y>.py (Internet).
 
-Ce fichier a deux usages :
-  * `python get_pip_offline.py --seed` (appele par `aci sanity|units` en mode venv) : lit la version de pip voulue par
-    l'ansible-test installe et se copie sous ce nom de cache s'il n'y a rien ;
-  * execute par ansible-test a la place de get-pip : installe pip avec `ensurepip` (roue fournie
-    par la distribution, sans reseau) puis le met a la version demandee depuis l'index de
-    /etc/pip.conf (Nexus). Les options propres a get-pip (--no-setuptools, --no-wheel) sont ignorees.
+This file has two uses:
+  * `python get_pip_offline.py --seed` (called by `aci sanity|units` in venv mode): reads the pip version
+    wanted by the installed ansible-test and copies itself under that cache name if nothing is there;
+  * run by ansible-test instead of get-pip: installs pip with `ensurepip` (wheel shipped by the
+    distribution, no network) and then upgrades it to the requested version from the index in
+    /etc/pip.conf (Nexus). Options specific to get-pip (--no-setuptools, --no-wheel) are ignored.
 """
 from __future__ import annotations
 
@@ -24,22 +24,22 @@ GET_PIP_ONLY = {"--no-setuptools", "--no-wheel"}
 
 
 def seed() -> None:
-    import ansible_test  # venv de la serie (aci)
+    import ansible_test  # venv of the series (aci)
 
     src = os.path.join(os.path.dirname(ansible_test.__file__), "_internal", "python_requirements.py")
     with open(src, encoding="utf-8") as f:
         versions = sorted(set(re.findall(r"pip='([0-9.]+)'", f.read())))
     if not versions:
-        sys.exit(f"version de pip introuvable dans {src}")
+        sys.exit(f"pip version not found in {src}")
     cache = os.path.expanduser("~/.ansible/test/cache")
     os.makedirs(cache, exist_ok=True)
     for version in versions:
         dest = os.path.join(cache, "get_pip_%s.py" % version.replace(".", "_"))
         if os.path.exists(dest):
-            print(f"get-pip {version} : deja en cache ({dest})")
+            print(f"get-pip {version}: already cached ({dest})")
         else:
             shutil.copyfile(__file__, dest)
-            print(f"get-pip {version} : remplacant hors ligne depose ({dest})")
+            print(f"get-pip {version}: offline replacement installed ({dest})")
 
 
 def bootstrap(args: list[str]) -> None:

@@ -1,3 +1,0 @@
-moleculeTest(Map opts = [:]) - molecule test --all (extensions/molecule, ansible-native) sur un agent
-avec podman (label ansible-builder). images : images pre-tirees depuis imageMirror
-(defaut ['ubuntu2404', 'fedora40']). args : ex. ['-s', 'default'].

@@ -1,4 +1,4 @@
-# Outils de la commande `aci lint` (versions figees dans constraints.txt)
+# Tools of the `aci lint` command (versions pinned in constraints.txt)
 yamllint
 ansible-lint
 antsibull-changelog

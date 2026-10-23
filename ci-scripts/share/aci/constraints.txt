@@ -1,6 +1,6 @@
-# Versions figees des outils (mise a jour controlee, p.ex. via Renovate pointant sur Nexus).
-# Ne PAS figer ansible-core ici : la serie est choisie par session (matrice).
-# Releves PyPI au 2026-10-20.
+# Pinned tool versions (controlled updates, e.g. with Renovate pointed at Nexus).
+# Do NOT pin ansible-core here: the series is chosen per run (matrix).
+# PyPI versions as of 2026-10-20.
 yamllint==1.38.0
 ansible-lint==26.10.1
 antsibull-changelog==0.35.2

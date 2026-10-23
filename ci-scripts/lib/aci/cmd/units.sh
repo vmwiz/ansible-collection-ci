@@ -1,7 +1,7 @@
 # shellcheck shell=bash
-# aide:   units           ansible-test units --requirements (ACI_CORE, ACI_TEST_MODE, ACI_UNITS_ARGS)
+# help:   units           ansible-test units --requirements (ACI_CORE, ACI_TEST_MODE, ACI_UNITS_ARGS)
 main() {
-  if [ ! -d "$ACI_SRC/tests/unit" ]; then log "pas de tests/unit : rien a faire"; return 0; fi
+  if [ ! -d "$ACI_SRC/tests/unit" ]; then log "no tests/unit: nothing to do"; return 0; fi
   aci_venv core >/dev/null
   aci_test_home
   local -a target

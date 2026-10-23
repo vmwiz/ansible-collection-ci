@@ -1,15 +1,8 @@
-// Configuration du banc : bibliotheque globale "ansible-ci" (depot git local), agent "runner-1"
-// (label ansible-runner), jobs de test. Rejoue a chaque demarrage (idempotent).
+// Bench setup on top of infra/jenkins/jcasc.yaml: two inbound agents and the test jobs.
+// Replayed at every start (idempotent).
 import jenkins.model.Jenkins
 import jenkins.model.JenkinsLocationConfiguration
-import jenkins.plugins.git.GitSCMSource
-import jenkins.plugins.git.traits.BranchDiscoveryTrait
-import jenkins.plugins.git.traits.TagDiscoveryTrait
-import org.jenkinsci.plugins.workflow.libs.GlobalLibraries
-import org.jenkinsci.plugins.workflow.libs.LibraryConfiguration
-import org.jenkinsci.plugins.workflow.libs.SCMSourceRetriever
 import org.jenkinsci.plugins.workflow.job.WorkflowJob
-import org.jenkinsci.plugins.workflow.cps.CpsFlowDefinition
 import org.jenkinsci.plugins.workflow.cps.CpsScmFlowDefinition
 import hudson.plugins.git.GitSCM
 import hudson.plugins.git.BranchSpec
@@ -20,38 +13,26 @@ def j = Jenkins.get()
 j.setNumExecutors(0)
 JenkinsLocationConfiguration.get().setUrl('http://jenkins:8080/')
 
-// Bibliotheque globale = de confiance (hors sandbox). v1 = branche mobile, v1.0.0 = tag.
-def src = new GitSCMSource('file:///repos/ansible-ci.git')
-src.setTraits([new BranchDiscoveryTrait(), new TagDiscoveryTrait()])
-def lib = new LibraryConfiguration('ansible-ci', new SCMSourceRetriever(src))
-lib.setDefaultVersion('v1')
-lib.setImplicit(false)
-lib.setAllowVersionOverride(true)
-GlobalLibraries.get().setLibraries([lib])
-
-// Agent inbound websocket, label ansible-runner
-if (j.getNode('runner-1') == null) {
-    def agent = new DumbSlave('runner-1', '/home/ci/agent', new JNLPLauncher())
-    agent.setNumExecutors(8)
-    agent.setLabelString('ansible-runner')
-    j.addNode(agent)
+// runner-1 stands in for the 'ansible-runner' pod, builder-1 for the ansible-builder Podman VM
+[['runner-1', 'ansible-runner', 6, '/home/ci/agent'], ['builder-1', 'ansible-builder', 2, '/tmp/jk/builder']].each { a ->
+    if (j.getNode(a[0]) == null) {
+        def agent = new DumbSlave(a[0], a[3], new JNLPLauncher())
+        agent.setNumExecutors(a[2])
+        agent.setLabelString(a[1])
+        j.addNode(agent)
+    }
+    new File('/var/jenkins_home/shared').mkdirs()
+    new File("/var/jenkins_home/shared/${a[0]}.secret").text = j.getComputer(a[0]).getJnlpMac()
 }
-new File('/var/jenkins_home/shared').mkdirs()
-new File('/var/jenkins_home/shared/runner-1.secret').text = j.getComputer('runner-1').getJnlpMac()
 
-// Jobs
-def recreate = { String name, def definition ->
+// corp-demo: full example collection (units, integration, Molecule), Jenkinsfile @v2 (moving tag)
+// corp-demo-lite: same collection without tests/unit, tests/integration, extensions/molecule, pinned @v2.0.0
+['corp-demo', 'corp-demo-lite'].each { name ->
     j.getItem(name)?.delete()
+    def scm = new GitSCM(GitSCM.createRepoList("file:///repos/${name}.git", null), [new BranchSpec('*/main')], null, null, [])
     WorkflowJob job = j.createProject(WorkflowJob, name)
-    job.setDefinition(definition)
+    job.setDefinition(new CpsScmFlowDefinition(scm, 'Jenkinsfile'))
     job.save()
 }
-def scm = new GitSCM(GitSCM.createRepoList('file:///repos/corp.demo.git', null), [new BranchSpec('*/main')], null, null, [])
-recreate('corp-demo', new CpsScmFlowDefinition(scm, 'Jenkinsfile'))
-recreate('corp-demo-ee', new CpsScmFlowDefinition(scm, 'Jenkinsfile.ee'))
-recreate('corp-demo-ee-bad', new CpsScmFlowDefinition(scm, 'Jenkinsfile.ee-bad'))
-new File('/usr/share/jenkins/ref/e2e-jobs').eachFileMatch(~/.*\.groovy/) { f ->
-    recreate(f.name - '.groovy', new CpsFlowDefinition(f.text, true))   // sandbox : comme un Jenkinsfile
-}
 j.save()
-println 'ansible-ci e2e : configuration appliquee'
+println 'ansible-ci e2e: bench configured'

@@ -1,5 +1,5 @@
 ---
-# Profil impose par la certification Red Hat (partner-certification-checker)
+# Profile required by the Red Hat certification (partner-certification-checker)
 profile: production
 exclude_paths:
   - extensions/molecule/

@@ -1,2 +1,2 @@
-Émulation de l'image de base d'entreprise pour les tests uniquement (voir ../README.md, section Test).
-`corp-test-ca.crt` : AC de test à générer (non fournie), signataire du certificat du faux Nexus.
+Emulation of the corporate base image, for tests only (see ../README.md).
+`corp-test-ca.crt`: test CA to generate (not provided), signer of the fake Nexus certificate.

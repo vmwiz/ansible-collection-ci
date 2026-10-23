@@ -1,7 +1,0 @@
-ansibleEeUnits(image: '<EE>') - POC, NON TESTE (pas d'acces a registry.redhat.io sur le banc).
-
-ansible-test units execute DANS l'image de l'EE (podman run --userns=keep-id, arbre de la collection monte,
-/etc/pip.conf monte pour Nexus) avec le Python et les bibliotheques de l'EE :
-ansible-test units --venv --venv-system-site-packages --python <python de l'EE> --requirements.
-Agent : ansible-builder (podman). Rapport JUnit : reports/ee-units-<image>/junit/.
-Dans ansibleCollectionPipeline : eeTests: true (exige targetEEs), resultat non bloquant (UNSTABLE).

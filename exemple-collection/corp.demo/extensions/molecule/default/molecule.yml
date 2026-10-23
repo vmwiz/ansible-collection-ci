@@ -1,6 +1,0 @@
----
-# Scenario "default" = gestionnaire du cycle de vie des cibles (shared_state).
-scenario:
-  test_sequence:
-    - create
-    - destroy

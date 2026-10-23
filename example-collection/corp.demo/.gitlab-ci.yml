@@ -1,0 +1,5 @@
+# Collection pipeline: ansible-collection-ci component, latest 1.x release.
+include:
+  - component: $CI_SERVER_FQDN/ci/ansible-collection-ci/ansible-collection@1
+    inputs:
+      ansible-core-optional: '2.20'   # AAP 2.7 readiness, non-blocking

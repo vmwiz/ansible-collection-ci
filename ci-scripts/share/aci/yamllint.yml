@@ -1,5 +1,5 @@
-# Configuration yamllint par defaut (utilisee si le depot n'a pas de .yamllint)
-# Compatible avec les regles yamllint d'ansible-lint.
+# Default yamllint configuration (used when the repository has no .yamllint)
+# Compatible with the yamllint rules of ansible-lint.
 extends: default
 rules:
   line-length:

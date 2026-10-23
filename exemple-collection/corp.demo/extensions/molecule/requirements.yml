@@ -1,5 +1,0 @@
----
-# Collections necessaires aux scenarios Molecule (resolues via le Nexus "ansible-group").
-collections:
-  - name: containers.podman
-    version: ">=1.16.0"

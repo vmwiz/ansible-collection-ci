@@ -1,9 +1,9 @@
 ---
-- name: Detruire les conteneurs de test
+- name: Destroy the test containers
   hosts: localhost
   gather_facts: false
   tasks:
-    - name: Supprimer les conteneurs
+    - name: Remove the containers
       containers.podman.podman_container:
         name: "{{ item }}"
         state: absent

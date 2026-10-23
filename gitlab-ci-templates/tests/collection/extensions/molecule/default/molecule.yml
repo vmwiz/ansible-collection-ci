@@ -1,5 +1,5 @@
 ---
-# Scenario "default" = gestionnaire du cycle de vie des cibles (shared_state).
+# "default" scenario = lifecycle manager of the targets (shared_state).
 scenario:
   test_sequence:
     - create

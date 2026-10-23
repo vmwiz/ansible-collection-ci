@@ -1,0 +1,31 @@
+# Complete .gitlab-ci.yml: all common options (the values shown are examples).
+# Secrets to define as masked CI/CD variables (Settings > CI/CD > Variables, group or project):
+#   ACI_GALAXY_TOKEN (protected: publication on protected tags), SPOTTER_TOKEN.
+workflow:            # a single pipeline per MR (avoids the branch + MR duplicate)
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
+      when: never
+    - if: $CI_COMMIT_BRANCH || $CI_COMMIT_TAG || $CI_PIPELINE_SOURCE == "schedule"
+
+include:
+  - component: $CI_SERVER_FQDN/ci/ansible-collection-ci/ansible-collection@1.0.0
+    inputs:
+      runner-image: nexus.corp.local:8443/ci/ansible-collection-runner:2026.10
+      # Matrix: either series...
+      ansible-core-versions: ['2.16', '2.18']
+      ansible-core-optional: '2.20'            # AAP 2.7 readiness, non-blocking
+      # ...or the EEs actually deployed (introspection, exact version; identical series required)
+      # target-ees: >-
+      #   hub.corp.local/ansible-automation-platform-26/ee-minimal-rhel9:latest
+      #   hub.corp.local/ansible-automation-platform-26/ee-supported-rhel9:latest
+      test-mode: auto                          # venv (pod) on branches, docker (VM) on main/tags/schedules
+      integration: true
+      integration-images: [default]
+      molecule: true
+      molecule-images: ubuntu2404 fedora40
+      spotter: true
+      spotter-endpoint: https://spotter.corp.local/api
+      spotter-allow-failure: true
+      security-fail-on: high
+      changelog-skip-token: skip-changelog

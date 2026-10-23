@@ -1,0 +1,3 @@
+// Collection pipeline: ansible-ci shared library, moving tag v2 (latest 2.x). Nothing to configure.
+@Library('ansible-ci@v2') _
+ansibleCollectionPipeline()

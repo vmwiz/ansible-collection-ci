@@ -1,21 +1,21 @@
 """
-Pre-tire les images de conteneur attendues par ansible-test depuis un miroir interne (Nexus)
-puis les re-tague sous leur nom d'origine (quay.io/ansible/...).
+Pre-pulls the container images expected by ansible-test from an internal mirror (Nexus)
+and re-tags them with their original name (quay.io/ansible/...).
 
-Pourquoi : ansible-test lit ses images dans ansible_test/_data/completion/docker.txt (non
-surchargeable) et, avant chaque `docker pull`, verifie si l'image existe deja localement
-("Skipping pull of existing image"). En re-taguant l'image miroir sous le nom quay.io attendu,
-ansible-test fonctionne sans acces internet tout en conservant la semantique des alias
-(`--docker default` -> toutes les versions Python de l'image).
+Why: ansible-test reads its images from ansible_test/_data/completion/docker.txt (not
+overridable) and, before every `docker pull`, checks whether the image already exists locally
+("Skipping pull of existing image"). By re-tagging the mirrored image with the expected quay.io
+name, ansible-test works without Internet access while keeping the alias semantics
+(`--docker default` -> all Python versions of the image).
 
-Usage interne (appele par `aci prime-images`, dans le venv contenant ansible-core) :
+Internal usage (called by `aci prime-images`, inside the venv that contains ansible-core):
     python prime_images.py default [utility] [http] [ubuntu2404 ...] [image:tag ...]
 
-Variables :
-    ACI_IMAGE_MIRROR           registre miroir de quay.io, ex. "nexus.corp.local:8444"
-                               (proxy Docker Nexus dont l'URL distante est https://quay.io)
-    ACI_CONTAINER_ENGINE       "podman" (defaut) ou "docker"
-    ACI_DRY_RUN=1              affiche les commandes sans les executer
+Variables:
+    ACI_IMAGE_MIRROR           mirror registry of quay.io, e.g. "nexus.corp.local:8444"
+                               (Nexus Docker proxy whose remote URL is https://quay.io)
+    ACI_CONTAINER_ENGINE       "podman" (default) or "docker"
+    ACI_DRY_RUN=1              prints the commands without running them
 """
 from __future__ import annotations
 
@@ -25,13 +25,13 @@ import subprocess
 import sys
 from pathlib import Path
 
-import ansible_test  # fourni par ansible-core
+import ansible_test  # provided by ansible-core
 
 AT_ROOT = Path(ansible_test.__file__).resolve().parent
 COMPLETION = AT_ROOT / "_data" / "completion" / "docker.txt"
-# Images "support" codees en dur dans ansible-test (verifiees dans ansible-core 2.21) :
+# "Support" images hard-coded in ansible-test (checked in ansible-core 2.21):
 EXTRA_SOURCES = {
-    "utility": AT_ROOT / "_internal" / "docker_util.py",  # ansible-test-utility-container (sondes cgroup/audit)
+    "utility": AT_ROOT / "_internal" / "docker_util.py",  # ansible-test-utility-container (cgroup/audit probes)
     "http": AT_ROOT / "_internal" / "commands" / "integration" / "cloud" / "httptester.py",
     "pypi": AT_ROOT / "_internal" / "pypi_proxy.py",
     "acme": AT_ROOT / "_internal" / "commands" / "integration" / "cloud" / "acme.py",
@@ -40,7 +40,7 @@ IMAGE_RE = re.compile(r"quay\.io/ansible/[a-z0-9._/-]+:[A-Za-z0-9._-]+")
 
 
 def completion_images() -> dict[str, list[str]]:
-    """alias -> [images] (un alias 'default' peut avoir 2 lignes : collection et ansible-core)."""
+    """alias -> [images] (a 'default' alias may have 2 lines: collection and ansible-core)."""
     result: dict[str, list[str]] = {}
     for line in COMPLETION.read_text().splitlines():
         parts = line.split()
@@ -49,7 +49,7 @@ def completion_images() -> dict[str, list[str]]:
         alias = parts[0]
         opts = dict(p.split("=", 1) for p in parts[1:] if "=" in p)
         if "context" in opts and opts["context"] != "collection":
-            continue  # on teste une collection, pas ansible-core
+            continue  # we test a collection, not ansible-core
         image = opts.get("image")
         if image:
             result.setdefault(alias, []).append(image)
@@ -69,9 +69,9 @@ def resolve(names: list[str]) -> list[str]:
             if src.is_file():
                 images += IMAGE_RE.findall(src.read_text())
         elif "/" in name and ":" in name:
-            images.append(name)  # image explicite
+            images.append(name)  # explicit image
         else:
-            print(f"[prime_images] alias inconnu ignore : {name}", file=sys.stderr)
+            print(f"[prime_images] unknown alias ignored: {name}", file=sys.stderr)
     return list(dict.fromkeys(images))
 
 
@@ -86,7 +86,7 @@ def main() -> int:
     engine = os.environ.get("ACI_CONTAINER_ENGINE", "podman")
     images = resolve(sys.argv[1:] or ["default"])
     if not mirror:
-        print("[prime_images] ACI_IMAGE_MIRROR vide : rien a faire (ansible-test tirera les images lui-meme).")
+        print("[prime_images] ACI_IMAGE_MIRROR empty: nothing to do (ansible-test will pull the images itself).")
         return 0
     for image in images:
         if image.startswith("quay.io/"):

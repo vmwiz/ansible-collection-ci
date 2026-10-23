@@ -1,2 +1,0 @@
-galaxyImporter(Map opts = [:]) - galaxy-importer sur dist/*.tar.gz (apres ansibleCollectionBuild) : memes
-controles que Galaxy / Automation Hub. Rapport : reports/galaxy-importer/importer_result.json.

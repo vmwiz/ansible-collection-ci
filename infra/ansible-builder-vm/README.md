@@ -1,32 +1,32 @@
-# VM "ansible-builder" (podman rootless)
+# "ansible-builder" VM (rootless podman)
 
-Agent Jenkins (label `ansible-builder`) / runner GitLab shell (tag `ansible-builder`) pour les etapes
-qui ont besoin de conteneurs : `ansible-test --docker` (via podman), `integration`, `molecule`.
+Jenkins agent (label `ansible-builder`) / GitLab shell runner (tag `ansible-builder`) for the stages that
+need containers: `ansible-test --docker` (through podman), `integration`, `molecule`.
 
 ```bash
-mkdir -p files && cp /chemin/ac-interne.crt files/corp-ca.crt
-ansible-playbook -i "builder01.corp.local," -e builder_ci_user=jenkins site.yml   # ou gitlab-runner
+mkdir -p files && cp /path/to/internal-ca.crt files/corp-ca.crt
+ansible-playbook -i "builder01.corp.local," -e builder_ci_user=jenkins site.yml   # or gitlab-runner
 ```
 
-Points verifies lors de la validation (podman 5.4, rootless, cgroup v2) :
+Points checked during validation (podman 5.4, rootless, cgroup v2):
 
-* ansible-test detecte podman tout seul ; `ANSIBLE_TEST_PREFER_PODMAN=1` le force si un binaire
-  `docker` est aussi present (il ignore deja un `docker` qui n'est qu'un alias de podman).
-* Les conteneurs de test demarrent **systemd** (`--systemd always --cgroupns private`) : l'utilisateur
-  doit disposer d'un sous-arbre cgroup v2 **delegue** (session systemd utilisateur, d'ou
-  `loginctl enable-linger`). Sans delegation : `Failed to create /init.scope control group: Permission denied`
-  puis `can only create exec sessions on running containers`.
-  Controle : `cat /sys/fs/cgroup/user.slice/user-$(id -u).slice/user@$(id -u).service/cgroup.controllers`.
-* Jobs lances sans session logind (runner GitLab via `su`) : definir `XDG_RUNTIME_DIR=/run/user/<uid>`.
-* Python : `builder_python` (python3.12, porte aussi le venv d'outillage `/opt/ansible-ci`). 3.12 couvre
-  2.16 (3.10-3.12), 2.18 (3.11-3.13), 2.20 (3.12-3.14) et la certification. `builder_extra_pythons` (vide par
-  defaut) : ajouter `python3.14` seulement pour 2.22 / `milestone` / `devel` (AppStream RHEL 9.8 : pas de 3.13).
-* `templates/registries-nexus.conf` : miroirs podman (quay.io, docker.io, ghcr.io) vers Nexus,
-  depose dans `/etc/containers/registries.conf.d/`.
-* Scripts `aci` : copies de `ci-scripts/` (meme version que l'image runner) dans `/opt/ansible-ci`
-  (`/opt/ansible-ci/bin/aci`, chemin utilise par le composant GitLab et par Jenkins `scriptsFrom: 'agent'`).
-  Lancer le playbook depuis un checkout du tag `v1.x.y` du depot. Par defaut Jenkins n'en a pas besoin
-  (scripts fournis par la bibliotheque), GitLab si.
-* Introspection des EE (`targetEEs` / `target-ees`) : la VM doit pouvoir tirer les images EE depuis le
-  miroir Nexus de `registry.redhat.io` ou le Private Automation Hub (`podman login` du compte CI).
-* `shellcheck` (sanity) n'est pas requis sur la VM : sanity tourne dans `default-test-container`.
+* ansible-test detects podman by itself; `ANSIBLE_TEST_PREFER_PODMAN=1` forces it when a real `docker`
+  binary is also installed (a `docker` that is only a podman alias is already ignored). Set it in the
+  Jenkins agent environment (node properties) if needed.
+* The test containers start **systemd** (`--systemd always --cgroupns private`): the user needs a
+  **delegated** cgroup v2 subtree (systemd user session, hence `loginctl enable-linger`). Without
+  delegation: `Failed to create /init.scope control group: Permission denied` then
+  `can only create exec sessions on running containers`.
+  Check: `cat /sys/fs/cgroup/user.slice/user-$(id -u).slice/user@$(id -u).service/cgroup.controllers`.
+* Jobs started without a logind session (GitLab runner through `su`): set `XDG_RUNTIME_DIR=/run/user/<uid>`.
+* Python: `builder_python` (python3.12, also hosts the `/opt/ansible-ci` tooling venv). 3.12 covers
+  2.16 (3.10-3.12), 2.18 (3.11-3.13), 2.20 (3.12-3.14) and the certification. `builder_extra_pythons`
+  (empty by default): add `python3.14` only for 2.22 / `milestone` / `devel` (RHEL 9.8 AppStream has no 3.13).
+* `templates/registries-nexus.conf`: podman mirrors (quay.io, docker.io, ghcr.io) to Nexus, installed in
+  `/etc/containers/registries.conf.d/`.
+* `aci` scripts: copied from `ci-scripts/` (same version as the runner image) to `/opt/ansible-ci`
+  (`/opt/ansible-ci/bin/aci`, the path called by the Jenkins pipeline and the GitLab component).
+  Run the playbook from a checkout of the matching tag of this repository.
+* EE introspection (GitLab `target-ees`): the VM must be able to pull the EE images from the Nexus mirror
+  of `registry.redhat.io` or from the Private Automation Hub (`podman login` of the CI account).
+* `shellcheck` (sanity) is not needed on the VM: sanity runs in `default-test-container`.

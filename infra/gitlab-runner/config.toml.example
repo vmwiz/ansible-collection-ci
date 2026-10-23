@@ -1,27 +1,27 @@
-# Extrait de /etc/gitlab-runner/config.toml - runners dedies aux collections Ansible (airgap).
-# Deux runners, choisis par les "tags" des jobs dans .gitlab-ci.yml :
-#   tag "ansible-runner"  -> executor kubernetes (pods restreints, aucun moteur de conteneurs)
-#   tag "ansible-builder" -> executor shell sur la VM ansible-builder (podman rootless, /opt/ansible-ci/bin/aci)
-# (tags par defaut des inputs runner-tags / builder-tags du composant gitlab-ci-templates)
-# Sur OpenShift, on peut aussi deployer le runner via l'operateur certifie "GitLab Runner"
-# (meme section [runners.kubernetes] dans la ConfigMap de configuration).
+# Excerpt of /etc/gitlab-runner/config.toml - runners dedicated to Ansible collections (airgapped).
+# Two runners, selected by the job "tags" in .gitlab-ci.yml:
+#   tag "ansible-runner"  -> kubernetes executor (restricted pods, no container engine)
+#   tag "ansible-builder" -> shell executor on the ansible-builder VM (rootless podman, /opt/ansible-ci/bin/aci)
+# (default tags of the runner-tags / builder-tags inputs of the gitlab-ci-templates component)
+# On OpenShift the runner can also be deployed with the certified "GitLab Runner" operator
+# (same [runners.kubernetes] section in the configuration ConfigMap).
 
 concurrent = 20
 
 # ---------------------------------------------------------------------------------------------
-# 1) Kubernetes executor sur OpenShift (SCC restricted-v2)
+# 1) Kubernetes executor on OpenShift (SCC restricted-v2)
 # ---------------------------------------------------------------------------------------------
 [[runners]]
   name = "openshift-ansible-collections"
   url = "https://gitlab.corp.local/"
   executor = "kubernetes"
-  # token = "..."   (gitlab-runner register / operateur)
+  # token = "..."   (gitlab-runner register / operator)
   [runners.kubernetes]
     namespace = "ci-ansible"
     image = "nexus.corp.local:8443/ci/ansible-collection-runner:2026.10"
-    # Helper compatible UID arbitraire (images UBI "ocp" de GitLab), servie par le proxy Nexus
-    # de registry.gitlab.com (port 8446) - aligner le tag sur la version du runner.
-    helper_image = "nexus.corp.local:8446/gitlab-org/ci-cd/gitlab-runner-ubi-images/gitlab-runner-helper-ocp:<version-du-runner>"
+    # Helper that supports arbitrary UIDs (GitLab UBI "ocp" images), served by the Nexus proxy
+    # of registry.gitlab.com (port 8446) - align the tag with the runner version.
+    helper_image = "nexus.corp.local:8446/gitlab-org/ci-cd/gitlab-runner-ubi-images/gitlab-runner-helper-ocp:<runner-version>"
     pull_policy = ["if-not-present"]
     privileged = false
     allow_privilege_escalation = false
@@ -29,38 +29,25 @@ concurrent = 20
     cpu_request = "1"
     memory_request = "2Gi"
     memory_limit = "6Gi"
-    # Pas de runAsUser : OpenShift injecte un UID aleatoire de la plage du namespace (GID 0).
+    # No runAsUser: OpenShift injects a random UID from the namespace range (GID 0).
     [runners.kubernetes.pod_security_context]
       run_as_non_root = true
-    # Optionnel : cache persistant des venvs aci (sinon recrees a chaque job depuis Nexus, ~30-60 s).
-    # PVC RWX (aci verrouille ses venvs par flock) ; ne PAS utiliser le `cache:` GitLab (chemin dans le projet).
+    # Optional: persistent cache of the aci venvs (otherwise recreated from Nexus in every job, ~30-60 s).
+    # RWX PVC (aci locks its venvs with flock); do NOT use the GitLab `cache:` (path inside the project).
     # [[runners.kubernetes.volumes.pvc]]
     #   name = "ansible-ci-cache"
     #   mount_path = "/home/ci/.cache/ansible-ci"
 
 # ---------------------------------------------------------------------------------------------
-# 2) Executor shell sur la VM "ansible-builder" (podman rootless)
+# 2) Shell executor on the "ansible-builder" VM (rootless podman)
 # ---------------------------------------------------------------------------------------------
 [[runners]]
   name = "ansible-builder-vm"
   url = "https://gitlab.corp.local/"
   executor = "shell"
   shell = "bash"
-  # Les jobs tournent sous l'utilisateur du service (gitlab-runner) : il lui faut des plages
-  # /etc/subuid + /etc/subgid, "loginctl enable-linger gitlab-runner" et XDG_RUNTIME_DIR, sinon
-  # podman rootless ne trouve pas son repertoire d'execution (pas de session logind via su).
+  # Jobs run as the service user (gitlab-runner): it needs /etc/subuid + /etc/subgid ranges,
+  # "loginctl enable-linger gitlab-runner" and XDG_RUNTIME_DIR, otherwise rootless podman cannot
+  # find its runtime directory (no logind session through su).
   environment = ["XDG_RUNTIME_DIR=/run/user/<UID-gitlab-runner>", "ANSIBLE_TEST_PREFER_PODMAN=1", "ACI_CONTAINER_ENGINE=podman"]
   limit = 4
-
-# ---------------------------------------------------------------------------------------------
-# 3) (Historique) executor docker + socket de l'hote - tag "docker" (.docker-socket)
-#    A reserver a des runners dedies : le socket donne un acces root a l'hote.
-# ---------------------------------------------------------------------------------------------
-# [[runners]]
-#   name = "docker-socket-ansible"
-#   executor = "docker"
-#   [runners.docker]
-#     image = "nexus.corp.local:8443/ci/ansible-collection-runner:2026.10"
-#     volumes = ["/var/run/docker.sock:/var/run/docker.sock", "/cache"]
-#     group_add = ["999"]
-#     helper_image = "nexus.corp.local:8443/gitlab-org/gitlab-runner/gitlab-runner-helper:x86_64-latest"

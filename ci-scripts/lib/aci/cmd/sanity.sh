@@ -1,5 +1,5 @@
 # shellcheck shell=bash
-# aide:   sanity          ansible-test sanity (ACI_CORE, ACI_TEST_MODE=venv|docker, ACI_SANITY_ARGS)
+# help:   sanity          ansible-test sanity (ACI_CORE, ACI_TEST_MODE=venv|docker, ACI_SANITY_ARGS)
 main() {
   aci_venv core >/dev/null
   aci_test_home
@@ -10,7 +10,7 @@ main() {
     if [ "${ACI_VENV_URL_REQS:-skip}" != allow ]; then
       local t
       for t in $(python "$ACI_PY/url_requirements.py"); do
-        warn "test sanity '$t' ignore en mode venv : exigence pip par URL directe (non servie par Nexus PyPI)"
+        warn "sanity test '$t' skipped in venv mode: direct-URL pip requirement (not served by Nexus PyPI)"
         target+=(--skip-test "$t")
       done
     fi

@@ -1,13 +1,13 @@
-# POC UNIQUEMENT (non valide sur cluster) : podman DANS un pod, OpenShift >= 4.20
-# (user namespaces GA + SCC "nested-container"). Necessite :
-#   oc adm policy add-scc-to-user nested-container -z <serviceaccount-jenkins-agents> -n ci-ansible
-# Point bloquant probable pour ansible-test : il lance un conteneur utilitaire en
-# "--privileged --pid host" et des conteneurs systemd ; a verifier dans ce contexte imbrique.
+# POC ONLY (not validated on a cluster): podman INSIDE a pod, OpenShift >= 4.20
+# (user namespaces GA + SCC "nested-container"). Requires:
+#   oc adm policy add-scc-to-user nested-container -z <jenkins-agents-serviceaccount> -n ci-ansible
+# Likely blocker for ansible-test: it starts a utility container with "--privileged --pid host"
+# and systemd containers; to be checked in this nested context.
 apiVersion: v1
 kind: Pod
 metadata:
   annotations:
-    # /dev/fuse pour fuse-overlayfs dans le conteneur (cf. article Red Hat Dev Spaces)
+    # /dev/fuse for fuse-overlayfs inside the container (see the Red Hat Dev Spaces article)
     io.kubernetes.cri-o.Devices: /dev/fuse,/dev/net/tun
 spec:
   hostUsers: false
@@ -19,7 +19,7 @@ spec:
     - name: jnlp
       image: nexus.corp.local:8443/jenkins/inbound-agent:latest-jdk21
     - name: runner
-      image: nexus.corp.local:8443/ci/ansible-collection-runner-podman:2026.10  # variante avec podman
+      image: nexus.corp.local:8443/ci/ansible-collection-runner-podman:2026.10  # variant with podman
       command: ["sleep"]
       args: ["infinity"]
       securityContext:

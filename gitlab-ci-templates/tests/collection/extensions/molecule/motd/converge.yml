@@ -3,7 +3,7 @@
   hosts: molecule
   gather_facts: false
   tasks:
-    - name: Appliquer le role
+    - name: Apply the role
       ansible.builtin.include_role:
         name: corp.demo.motd
       vars:

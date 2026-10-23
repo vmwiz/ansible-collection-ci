@@ -1,0 +1,16 @@
+---
+# "ansible-native" Molecule configuration (Molecule >= 25.9) shared by all scenarios.
+# No driver: the "default" scenario creates/destroys the containers with containers.podman.
+ansible:
+  executor:
+    args:
+      ansible_playbook:
+        - --inventory=${MOLECULE_SCENARIO_DIRECTORY}/../inventory.yml
+
+scenario:
+  test_sequence:
+    - converge
+    - idempotence
+    - verify
+
+shared_state: true

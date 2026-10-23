@@ -1,3 +1,0 @@
----
-# Herite integralement de ../config.yml (converge -> idempotence -> verify).
-{}

@@ -1,6 +1,0 @@
-// Pipeline de la collection : bibliotheque partagee ansible-ci, branche v1 (derniere 1.x).
-@Library('ansible-ci@v1') _
-
-ansibleCollectionPipeline(
-    ansibleCoreOptional: ['2.20'],   // preparation AAP 2.7, non bloquant
-)

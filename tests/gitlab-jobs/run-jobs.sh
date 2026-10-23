@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Banc : execute pour de vrai les scripts des jobs RENDUS du composant (render.py), sans GitLab.
-#   jobs "runner" (pods) -> conteneur de l'image runner sur le reseau airgap, UID arbitraire, cap-drop ALL ;
-#   aci-ee-introspect (runner shell de la VM ansible-builder) -> sur l'hote du banc, avec podman.
-# Chaque job part d'un clone neuf (comme un runner) ; les artefacts de l'introspection sont recopies ;
-# /tmp/gl/cache simule le volume persistant ~/.cache/ansible-ci du runner Kubernetes.
-# Usage : run-jobs.sh INPUTS CONTEXTE "job[:cellule-json] ..."     Sortie : $OUT/<job>.log + resultats.txt
+# Bench: really runs the scripts of the component's RENDERED jobs (render.py), without GitLab.
+#   "runner" jobs (pods) -> container of the runner image on the airgap network, arbitrary UID, cap-drop ALL;
+#   aci-ee-introspect (shell runner of the ansible-builder VM) -> on the bench host, with podman.
+# Every job starts from a fresh clone (like a runner); the introspection artifacts are copied over;
+# /tmp/gl/cache simulates the persistent ~/.cache/ansible-ci volume of the Kubernetes runner.
+# Usage: run-jobs.sh INPUTS CONTEXT "job[:cell-json] ..."     Output: $OUT/<job>.log + results.txt
 set -uo pipefail
 here=$(cd "$(dirname "$0")" && pwd); root=$(cd "$here/../.." && pwd)
 G=$root/gitlab-ci-templates; T=$G/templates/ansible-collection/template.yml
@@ -21,22 +21,22 @@ run_one() {
   if [ "$ctx" = mr ]; then git -C "$dir" checkout -q "${MR_BRANCH:-feature}"; fi
   [ -f "$W/ee-matrix.txt" ] && mkdir -p "$dir/reports/ee" && cp "$W/ee-matrix.txt" "$dir/reports/ee/matrix.txt"
   python3 "$G/tests/render.py" "$T" -i "$inputs" --job "$name" --context "$ctx" --cell "$cell" --emit "$W/$slug/job.sh" || return 1
-  if [ "$name" = aci-ee-introspect ]; then   # VM ansible-builder : runner shell, aci de ci-scripts
+  if [ "$name" = aci-ee-introspect ]; then   # ansible-builder VM: shell runner, aci from ci-scripts
     (cd "$dir" && ACI_CACHE=/tmp/aci-cache bash -c "$(sed "s#^export ACI=.*#export ACI=$root/ci-scripts/bin/aci#" "$W/$slug/job.sh")") > "$OUT/$slug.log" 2>&1
     rc=$?; [ -f "$dir/reports/ee/matrix.txt" ] && cp "$dir/reports/ee/matrix.txt" "$W/ee-matrix.txt"
   else
     chmod -R a+rwX "$W/$slug"
-    # shellcheck disable=SC2024  # journal ecrit par l utilisateur courant
+    # shellcheck disable=SC2024  # log written by the current user
     sudo podman run --rm --network airgap --user 1000680000:0 --cap-drop ALL --security-opt no-new-privileges \
       -e CI_PROJECT_DIR=/builds/corp/demo -v "$W/$slug/builds:/builds" -v "$REPO:$REPO:ro" -v "$W/$slug/job.sh:/job.sh:ro" \
       -v /tmp/gl/cache:/home/ci/.cache/ansible-ci -w /builds/corp/demo \
       "$IMAGE" bash /job.sh > "$OUT/$slug.log" 2>&1
     rc=$?
   fi
-  echo "$spec rc=$rc" | tee -a "$OUT/resultats.txt"
+  echo "$spec rc=$rc" | tee -a "$OUT/results.txt"
 }
 export -f run_one; export here root G T inputs ctx OUT W IMAGE REPO
-: > "$OUT/resultats.txt"
+: > "$OUT/results.txt"
 for j in $jobs; do case $j in aci-ee-introspect*) run_one "$j" ;; esac; done
-# shellcheck disable=SC2086  # liste de jobs separes par des espaces
+# shellcheck disable=SC2086  # space-separated job list
 printf '%s\n' $jobs | grep -v '^aci-ee-introspect' | xargs -r -d '\n' -P "${PAR:-4}" -I{} bash -c 'run_one "$@"' _ {}

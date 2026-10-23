@@ -1,0 +1,16 @@
+---
+# Test targets: rootless podman containers based on the ansible-test images, already present
+# locally after `aci prime-images` (done by `aci molecule`: aliases ubuntu2404 fedora40, resolved for
+# the default series, ansible-core 2.18). Changing series = updating these tags
+# (ansible_test/_data/completion/docker.txt).
+all:
+  children:
+    molecule:
+      hosts:
+        molecule-ubuntu2404:
+          molecule_image: quay.io/ansible/ubuntu2404-test-container:8.1.0
+        molecule-fedora40:
+          molecule_image: quay.io/ansible/fedora40-test-container:8.1.0
+      vars:
+        ansible_connection: containers.podman.podman
+        ansible_python_interpreter: auto_silent

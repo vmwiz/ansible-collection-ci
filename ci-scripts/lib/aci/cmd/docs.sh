@@ -1,5 +1,5 @@
 # shellcheck shell=bash
-# aide:   docs            antsibull-docs lint-collection-docs (documentation des plugins et roles)
+# help:   docs            antsibull-docs lint-collection-docs (plugin and role documentation)
 main() {
   aci_venv docs >/dev/null
   aci_prepare_tree docs

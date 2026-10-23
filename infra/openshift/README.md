@@ -1,32 +1,33 @@
-# OpenShift : agents CI pour collections Ansible
+# OpenShift: CI agents for Ansible collections
 
-| Fichier | Usage |
+| File | Usage |
 |---|---|
-| `../../jenkins-shared-library/resources/org/corp/ansibleci/pod/runner-pod.yaml` | Modele de pod Jenkins (charge par la bibliotheque, images substituees), SCC `restricted-v2`, valide par `test/validate-pod.sh` |
-| `nested-podman-pod.poc.yaml` | **POC** podman imbrique (OCP >= 4.20, SCC `nested-container`) - non valide |
+| `../jenkins/jcasc.yaml` (pod template `ansible-runner`) | Jenkins agent pod, SCC `restricted-v2` (no fixed UID, non-root, `drop: ALL`, no privilege escalation, seccomp `RuntimeDefault`) |
+| `nested-podman-pod.poc.yaml` | **POC** nested podman (OCP >= 4.20, SCC `nested-container`) - not validated |
 
-## Ce qui tourne dans un pod restreint (sans moteur de conteneurs)
-lint, docs, build, galaxy-importer, security-scan, spotter, `ansible-test sanity/units --venv`
-(`aci` en mode `venv`, `ACI_TEST_MODE=venv`). Valide en simulant OpenShift : UID arbitraire (54321 puis 1000680000, GID 0, absent de
-`/etc/passwd`), `--cap-drop ALL`, `no-new-privileges`, aucun socket.
+## What runs in a restricted pod (no container engine)
+lint, docs, build, galaxy-importer, security-scan, spotter, certification, `ansible-test sanity/units --venv`
+(`aci` in `venv` mode, `ACI_TEST_MODE=venv`). Validated by simulating OpenShift: arbitrary UID (54321 then
+1000680000, GID 0, not in `/etc/passwd`), `--cap-drop ALL`, `no-new-privileges`, no socket.
 
-Prerequis airgap specifiques au mode venv :
-* ansible-test cree ses venvs sans pip puis execute `~/.ansible/test/cache/get_pip_<version>.py`
-  (sinon telecharge depuis `https://ci-files.testing.ansible.com/ansible-test/`) : `aci` y depose
-  `lib/aci/py/get_pip_offline.py` (`ensurepip` + pip a la version demandee depuis Nexus). Aucun depot raw necessaire ;
-* ansible-test --venv ne transmet pas `PIP_INDEX_URL` a ses venvs : c'est `/etc/pip.conf` de l'image de base
-  (UBI 9 d'entreprise, voir `infra/runner-image/README.md`) qui pointe vers Nexus.
-* Valide (v3 puis v4) avec l'image UBI 9 : UID 1000680000:0, `--cap-drop ALL`, reseau coupe sauf le faux Nexus.
+Airgap prerequisites specific to venv mode:
+* ansible-test creates its venvs without pip and then runs `~/.ansible/test/cache/get_pip_<version>.py`
+  (otherwise downloaded from `https://ci-files.testing.ansible.com/ansible-test/`): `aci` puts
+  `lib/aci/py/get_pip_offline.py` there (`ensurepip` + pip at the requested version from Nexus). No raw
+  repository needed;
+* ansible-test --venv does not pass `PIP_INDEX_URL` to its venvs: the `/etc/pip.conf` of the base image
+  (corporate UBI 9, see `infra/runner-image/README.md`) points to Nexus.
+* Validated with the UBI 9 image: UID 1000680000:0, `--cap-drop ALL`, network cut except the fake Nexus.
 
-## Ce qui ne peut PAS tourner dans un pod restreint
-`ansible-test --docker` (y compris integration) et Molecule : il faut un moteur de conteneurs.
-Options evaluees :
+## What CANNOT run in a restricted pod
+`ansible-test --docker` (including integration) and Molecule: they need a container engine.
+Options assessed:
 
-| Option | Realisme | Commentaire |
+| Option | Realism | Comment |
 |---|---|---|
-| VM `ansible-builder` + podman rootless (retenue) | **Eleve** | Valide de bout en bout (sanity/units/integration/molecule) |
-| Socket Docker de l'hote / DinD privileged | Refuse | Interdit par la politique (SCC `privileged`) |
-| Podman imbrique via user namespaces (`hostUsers: false` + SCC `nested-container`) | Moyen, POC | GA en OCP 4.20 (Technology Preview en 4.19). ansible-test lance `--privileged --pid host` et systemd : a valider |
-| buildah dans le pod | Hors sujet | Construit des images, n'execute pas de conteneurs de test |
-| OpenShift sandboxed containers (Kata) | Faible/couteux | Pods dans des micro-VM : privileges confines a la VM, mais virtualisation imbriquee ou noeuds bare-metal requis |
-| `ansible-test integration` en `--venv`/`--local` dans le pod | Limite | Seulement pour des cibles qui ne modifient pas le systeme (modules API/reseau) |
+| `ansible-builder` VM + rootless podman (chosen) | **High** | Validated end to end (sanity/units/integration/molecule) |
+| Host Docker socket / privileged DinD | Refused | Forbidden by policy (SCC `privileged`) |
+| Nested podman through user namespaces (`hostUsers: false` + SCC `nested-container`) | Medium, POC | GA in OCP 4.20 (Technology Preview in 4.19). ansible-test runs `--privileged --pid host` and systemd: to be validated |
+| buildah in the pod | Off topic | Builds images, does not run test containers |
+| OpenShift sandboxed containers (Kata) | Low/expensive | Pods in micro-VMs: privileges confined to the VM, but needs nested virtualisation or bare-metal nodes |
+| `ansible-test integration` with `--venv`/`--local` in the pod | Limited | Only for targets that do not modify the system (API/network modules) |

@@ -1,3 +1,3 @@
 # shellcheck shell=bash
-# aide:   venv [outils]   cree/reutilise le venv (core|lint|docs|import|molecule|security) d'ACI_CORE et affiche son chemin
+# help:   venv [toolset]  creates/reuses the venv (core|lint|docs|import|molecule|security) of ACI_CORE and prints its path
 main() { aci_venv "${1:-core}"; }

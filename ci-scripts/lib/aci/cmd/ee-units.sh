@@ -1,10 +1,10 @@
 # shellcheck shell=bash
-# aide:   ee-units        [POC] ansible-test units DANS une EE cible (Python et bibliotheques de l'EE) - podman
-# Usage : aci ee-units <image EE> [args ansible-test]   NON VALIDE sans EE Red Hat reelle (voir PROPOSITION.md).
+# help:   ee-units        [POC] ansible-test units INSIDE a target EE (the EE Python and libraries) - podman
+# Usage: aci ee-units <EE image> [ansible-test args]   NOT VALIDATED without a real Red Hat EE (see PROPOSITION.md).
 main() {
-  local image=${1:-}; [ -n "$image" ] || die "aci ee-units <image EE>"; shift
-  if [ ! -d "$ACI_SRC/tests/unit" ]; then log "pas de tests/unit : rien a faire"; return 0; fi
-  command -v "$ACI_CONTAINER_ENGINE" >/dev/null || die "ee-units exige $ACI_CONTAINER_ENGINE (agent VM ansible-builder)"
+  local image=${1:-}; [ -n "$image" ] || die "aci ee-units <EE image>"; shift
+  if [ ! -d "$ACI_SRC/tests/unit" ]; then log "no tests/unit: nothing to do"; return 0; fi
+  command -v "$ACI_CONTAINER_ENGINE" >/dev/null || die "ee-units needs $ACI_CONTAINER_ENGINE (ansible-builder VM agent)"
   aci_venv core >/dev/null
   aci_prepare_tree units
   local ns name label rel rc=0
@@ -12,9 +12,9 @@ main() {
   label=ee-units-$(basename "${image//:/-}")
   rel=ansible_collections/$ns/$name
   local -a extra=()
-  [ -f /etc/pip.conf ] && extra+=(-v /etc/pip.conf:/etc/pip.conf:ro)   # pytest & co depuis Nexus
+  [ -f /etc/pip.conf ] && extra+=(-v /etc/pip.conf:/etc/pip.conf:ro)   # pytest & co from Nexus
   [ "$ACI_CONTAINER_ENGINE" = podman ] && extra+=(--userns=keep-id)
-  # shellcheck disable=SC2016  # le script est evalue dans l'EE
+  # shellcheck disable=SC2016  # the script is evaluated inside the EE
   run "$ACI_CONTAINER_ENGINE" run --rm --entrypoint sh -e HOME=/tmp --user "$(id -u):$(id -g)" "${extra[@]}" \
       -v "$ACI_TREE_BASE:/work:Z" -w "/work/$rel" "$image" -c '
         py=$(ansible --version | sed -n "s/^ *python version = \([0-9]*\.[0-9]*\).*/\1/p")

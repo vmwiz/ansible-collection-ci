@@ -1,3 +1,0 @@
-ansibleSecurityScan(Map opts = [:]) - ansible-security-scanner (100 % local) : SARIF + JUnit dans
-reports/security/. Echec selon securityFailOn : high (defaut, HIGH ou CRITICAL), critical, none.
-securityReportSeverity filtre seulement le rapport. args : ex. ['--ignore', 'RULE1,RULE2'].

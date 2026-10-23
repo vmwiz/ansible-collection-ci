@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# aci - outillage CI des collections Ansible (meme scripts pour Jenkins et GitLab, airgap/Nexus).
-# Usage : aci <commande> [arguments transmis a l'outil]     (aci help)
+# aci - CI tooling for Ansible collections (same scripts for Jenkins and GitLab, airgapped/Nexus).
+# Usage: aci <command> [arguments passed to the tool]     (aci help)
 set -euo pipefail
 here=$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)
 # shellcheck source-path=SCRIPTDIR source=../lib/aci/common.sh
@@ -9,32 +9,32 @@ here=$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)
 cmd=${1:-help}; [ $# -gt 0 ] && shift
 case $cmd in
   help|-h|--help)
-    sed -n 's/^# aide: //p' "$ACI_LIB"/cmd/*.sh
+    sed -n 's/^# help: //p' "$ACI_LIB"/cmd/*.sh
     exit 0 ;;
   --version|version) echo "aci $ACI_VERSION"; exit 0 ;;
 esac
-[ -f "$ACI_LIB/cmd/$cmd.sh" ] || die "commande inconnue '$cmd' (aci help)"
-log "aci $ACI_VERSION : $cmd"
-# Composant GitLab / image : version de scripts attendue (meme majeure exigee, ecart mineur signale)
+[ -f "$ACI_LIB/cmd/$cmd.sh" ] || die "unknown command '$cmd' (aci help)"
+log "aci $ACI_VERSION: $cmd"
+# GitLab component / image: expected scripts version (same major required, minor drift reported)
 if [ -n "${ACI_EXPECTED_VERSION:-}" ] && [ "$ACI_EXPECTED_VERSION" != "$ACI_VERSION" ]; then
   [ "${ACI_EXPECTED_VERSION%%.*}" = "${ACI_VERSION%%.*}" ] ||
-    die "scripts aci $ACI_VERSION dans l'image, le modele attend $ACI_EXPECTED_VERSION (majeure differente) : changer runner-image"
-  warn "scripts aci $ACI_VERSION (le modele attend $ACI_EXPECTED_VERSION)"
+    die "aci scripts $ACI_VERSION in the image, the template expects $ACI_EXPECTED_VERSION (different major): change runner-image"
+  warn "aci scripts $ACI_VERSION (the template expects $ACI_EXPECTED_VERSION)"
 fi
-# Matrice derivee des EE (GitLab : artefact du job d'introspection) -> version exacte et Python de l'EE
+# Matrix derived from the EEs (GitLab: artifact of the introspection job) -> exact version and Python of the EE
 if [ -n "${ACI_EE_MATRIX:-}" ] && [ -f "$ACI_EE_MATRIX" ] && [ -n "${ACI_CORE:-}" ]; then
   read -r _ ee_py ee_pin _ < <(awk -v c="$ACI_CORE" '$1 == c' "$ACI_EE_MATRIX") || true
   if [ -n "${ee_pin:-}" ]; then
     export ACI_CORE_PIN=${ACI_CORE_PIN:-$ee_pin} ACI_PYTHON=${ACI_PYTHON:-$ee_py}
-    log "EE cible : ansible-core $ACI_CORE_PIN, Python $ACI_PYTHON"
+    log "target EE: ansible-core $ACI_CORE_PIN, Python $ACI_PYTHON"
   fi
 fi
-# Pre-versions : ACI_PRERELEASE_EXIT_CODE (ex. 3, avec allow_failure:exit_codes dans GitLab) remplace le
-# code d'echec d'une serie listee dans ACI_PRERELEASE -> job "en echec autorise" au lieu d'echoue.
+# Pre-releases: ACI_PRERELEASE_EXIT_CODE (e.g. 3, with allow_failure:exit_codes in GitLab) replaces the
+# failure code of a series listed in ACI_PRERELEASE -> job "allowed to fail" instead of failed.
 aci_on_exit() {
   local rc=$?
   if [ "$rc" -ne 0 ] && [ -n "${ACI_PRERELEASE_EXIT_CODE:-}" ] && aci_is_prerelease; then
-    warn "ansible-core $(aci_core) est en pre-version : echec non bloquant (code $rc -> $ACI_PRERELEASE_EXIT_CODE)"
+    warn "ansible-core $(aci_core) is a pre-release: non-blocking failure (code $rc -> $ACI_PRERELEASE_EXIT_CODE)"
     exit "$ACI_PRERELEASE_EXIT_CODE"
   fi
 }

@@ -1,0 +1,11 @@
+---
+galaxy_info:
+  author: corp
+  description: Writes /etc/motd (example role for the Molecule scenario)
+  license: GPL-3.0-or-later
+  min_ansible_version: "2.16"
+  platforms:
+    - name: Ubuntu
+      versions:
+        - noble
+dependencies: []

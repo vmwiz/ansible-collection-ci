@@ -1,5 +1,5 @@
 # corp.demo
 
-Collection de démonstration de la CI `ansible-ci` : `Jenkinsfile` (bibliothèque `@v1`) et
-`.gitlab-ci.yml` (composant `@1`), ansible-core 2.16 + 2.18 (+ 2.20 non bloquante), scénarios Molecule
-ansible-native dans `extensions/molecule/`.
+Demo collection for the `ansible-ci` CI: `Jenkinsfile` (shared library `@v2`) and `.gitlab-ci.yml`
+(component `@1`), ansible-core 2.16 + 2.18 (AAP 2.6), ansible-native Molecule scenarios in
+`extensions/molecule/`.

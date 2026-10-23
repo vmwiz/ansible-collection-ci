@@ -1,9 +1,9 @@
-"""Lit galaxy.yml (helper interne de `aci`).
+"""Reads galaxy.yml (internal helper of `aci`).
 
     python galaxy_meta.py <galaxy.yml>               -> "namespace name version"
-    python galaxy_meta.py <galaxy.yml> <deps.yml>    -> ecrit les dependances au format requirements.yml
-                                                         (rien si aucune) et affiche le meme triplet
-Python est de toute facon requis par ansible ; PyYAML est une dependance d'ansible-core.
+    python galaxy_meta.py <galaxy.yml> <deps.yml>    -> writes the dependencies in requirements.yml format
+                                                         (nothing if none) and prints the same triplet
+Python is required by Ansible anyway; PyYAML is an ansible-core dependency.
 """
 import sys
 

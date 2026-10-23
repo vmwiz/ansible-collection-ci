@@ -1,161 +1,124 @@
-import org.corp.ansibleci.Config
-
 /*
- * Pipeline declaratif complet de test/validation d'une collection Ansible (airgap, Nexus).
+ * ansible-ci: the one CI pipeline for Ansible collections (airgapped, Nexus, AAP 2.6).
+ * Fixed on purpose: every collection runs exactly the same stages. A collection Jenkinsfile is:
  *
- *   @Library('ansible-ci@v1') _
- *   ansibleCollectionPipeline(ansibleCoreOptional: ['2.20'], integration: true, spotter: true,
- *                             spotterEndpoint: 'https://spotter.corp.local/api')
+ *   @Library('ansible-ci@v2') _
+ *   ansibleCollectionPipeline()
  *
- * Reference des parametres : ansibleCollectionPipeline.txt / GUIDE-UTILISATEUR.md.
- * La configuration est validee AVANT le pipeline : une cle inconnue ou une valeur invalide arrete le
- * build avec la liste de toutes les erreurs.
+ * All the work is done by the `aci` CLI baked into the runner image and the ansible-builder VM
+ * (/opt/ansible-ci/bin/aci). Site settings are set once by the Jenkins admins (infra/jenkins/jcasc.yaml):
+ *   - global environment: ACI_GALAXY_URL, ACI_GALAXY_PUBLISH_URL, ACI_PYPI_ENDPOINT, ACI_IMAGE_MIRROR,
+ *     SPOTTER_ENDPOINT (Spotter stage is skipped when unset), SPOTTER_CACERT;
+ *   - pod template 'ansible-runner' (OpenShift, restricted-v2) and agents labelled 'ansible-builder' (Podman VM);
+ *   - credentials 'spotter-api-token' and 'nexus-galaxy-hosted-token' (Secret text).
+ * Optional stages (units, integration, Molecule) run only when the matching directory exists.
  */
-def call(Map config = [:]) {
-    Map res = Config.resolve(config, libraryResource('org/corp/ansibleci/aci/share/aci/python-map.txt'))
-    if (res.errors) {
-        error(Config.errorMessage('ansibleCollectionPipeline', res.errors))
-    }
-    Map cfg = res.cfg
-    // les directives declaratives (options) n'acceptent que des variables, pas d'appels de methode
-    String keep = "${cfg.buildsToKeep}"
-    int globalTimeout = cfg.timeoutMinutes
-
+def call() {
     pipeline {
         agent none
         options {
-            buildDiscarder(logRotator(numToKeepStr: keep))
-            timeout(time: globalTimeout, unit: 'MINUTES')
+            buildDiscarder(logRotator(numToKeepStr: '20'))
+            timeout(time: 90, unit: 'MINUTES')
             timestamps()
-            skipDefaultCheckout()
+            ansiColor('xterm')
         }
         stages {
-            stage('Configuration') {
-                steps {
-                    echo "ansible-ci ${libraryResource('org/corp/ansibleci/aci/VERSION').trim()} | " +
-                         (cfg.targetEEs ? "EE cibles ${cfg.targetEEs.join(' ')} (matrice derivee) | " : '') +
-                         "ansible-core ${cfg.ansibleCoreVersions.join(' ')}" +
-                         (cfg.ansibleCoreOptional ? " + non bloquant ${cfg.ansibleCoreOptional.join(' ')} " : ' ') +
-                         "(defaut ${cfg.defaultCore}, pre-versions ${cfg.ansibleCorePrerelease.join(' ') ?: 'aucune'}) | " +
-                         "mode ${aciBranches.testMode(cfg)} | agents ${cfg.agentType == 'label' ? cfg.runnerLabel : 'pod ' + cfg.runnerImage} / ${cfg.builderLabel}"
-                }
-            }
-            stage('EE cibles (introspection)') {
-                when { expression { !cfg.targetEEs.isEmpty() } }
-                steps {
-                    script {
-                        aciNode(cfg, 'builder') {
-                            Config.applyEeMatrix(cfg, ansibleEeIntrospect(images: cfg.targetEEs))
-                        }
-                    }
-                }
-            }
-            stage('Controles statiques') {
+            stage('Static checks') {
                 parallel {
-                    stage('Changelog (PR)') {
-                        when { expression { cfg.changelogCheck && env.CHANGE_ID != null } }
-                        steps { script { aciNode(cfg, 'runner') { ansibleChangelogCheck(skipToken: cfg.changelogSkipToken) } } }
-                    }
-                    stage('Certification Red Hat') {
-                        when { expression { cfg.certification } }
-                        steps {
-                            script {
-                                aciNode(cfg, 'runner') {
-                                    cfg.certificationCores = ansibleCertification(sanityCores: true)
-                                    ansibleCertification()
-                                }
-                            }
-                        }
-                    }
                     stage('Lint') {
-                        when { expression { cfg.lint } }
-                        steps { script { aciNode(cfg, 'runner') { ansibleLint() } } }
+                        agent { kubernetes { inheritFrom 'ansible-runner'; defaultContainer 'runner' } }
+                        steps { aci 'lint'; aci 'docs' }
                     }
-                    stage('Docs') {
-                        when { expression { cfg.docs } }
-                        steps { script { aciNode(cfg, 'runner') { ansibleCollectionDocs() } } }
+                    stage('Certification') {
+                        agent { kubernetes { inheritFrom 'ansible-runner'; defaultContainer 'runner' } }
+                        steps { aci 'certification' }
                     }
-                    stage('Build + galaxy-importer') {
-                        when { expression { cfg.build } }
+                    stage('Build') {
+                        agent { kubernetes { inheritFrom 'ansible-runner'; defaultContainer 'runner' } }
                         steps {
-                            script {
-                                aciNode(cfg, 'runner') {
-                                    ansibleCollectionBuild()
-                                    archiveArtifacts artifacts: 'dist/*.tar.gz', fingerprint: true
-                                    stash name: 'aci-dist', includes: 'dist/*.tar.gz'
-                                    if (cfg.galaxyImporter) { galaxyImporter() }
-                                }
-                            }
+                            aci 'build'
+                            archiveArtifacts artifacts: 'dist/*.tar.gz', fingerprint: true
+                            aci 'importer'
                         }
                     }
-                    stage('Securite') {
-                        when { expression { cfg.securityScan } }
-                        steps { script { aciNode(cfg, 'runner') { ansibleSecurityScan() } } }
+                    stage('Security scan') {
+                        agent { kubernetes { inheritFrom 'ansible-runner'; defaultContainer 'runner' } }
+                        steps { aci 'security-scan', 'reports/security/*.xml' }
                     }
                     stage('Spotter') {
-                        when { expression { cfg.spotter } }
+                        when { beforeAgent true; expression { env.SPOTTER_ENDPOINT } }
+                        agent { kubernetes { inheritFrom 'ansible-runner'; defaultContainer 'runner' } }
                         steps {
-                            script {
-                                aciNode(cfg, 'runner') {
-                                    if (cfg.spotterBlocking) {
-                                        spotterScan()
-                                    } else {
-                                        catchError(buildResult: 'UNSTABLE', stageResult: 'UNSTABLE', message: 'Spotter : non bloquant (spotterBlocking: false)') { spotterScan() }
-                                    }
+                            // findings make the build UNSTABLE, not FAILED
+                            catchError(buildResult: 'UNSTABLE', stageResult: 'UNSTABLE') {
+                                withCredentials([string(credentialsId: 'spotter-api-token', variable: 'SPOTTER_TOKEN')]) {
+                                    aci 'spotter', 'reports/spotter/*.xml'
                                 }
                             }
                         }
                     }
-                }
-            }
-            stage('ansible-test sanity / units') {
-                when { expression { cfg.sanity || cfg.units } }
-                steps { script { parallel aciBranches.tests(cfg) } }
-            }
-            stage('EE : units dans les EE (POC)') {
-                when { expression { cfg.eeTests } }
-                steps {
-                    script {
-                        Map b = [:]
-                        List images = cfg.targetEEs
-                        for (int i = 0; i < images.size(); i++) {
-                            String image = images[i]
-                            b["units dans ${image.tokenize('/').last()}"] = { aciNode(cfg, 'builder') { ansibleEeUnits(image: image) } }
-                        }
-                        parallel b
+                    stage('Changelog fragment') {
+                        when { beforeAgent true; changeRequest() }
+                        agent { kubernetes { inheritFrom 'ansible-runner'; defaultContainer 'runner' } }
+                        steps { aci 'changelog-check' }
                     }
                 }
             }
-            stage('Integration') {
-                when { expression { cfg.integration } }
-                steps { script { parallel aciBranches.integration(cfg) } }
-            }
-            stage('Molecule') {
-                when { expression { cfg.molecule } }
-                steps {
-                    script {
-                        aciNode(cfg, 'builder') {
-                            timeout(time: cfg.testTimeoutMinutes, unit: 'MINUTES') { moleculeTest() }
+            stage('ansible-test') {
+                matrix {
+                    // AAP 2.6 ships ansible-core 2.16 and 2.18; 2.20 (AAP 2.7) is also required by the
+                    // Red Hat certification sanity. All on Python 3.12, the Python of the AAP EEs.
+                    axes { axis { name 'ACI_CORE'; values '2.16', '2.18', '2.20' } }
+                    agent { kubernetes { inheritFrom 'ansible-runner'; defaultContainer 'runner' } }
+                    stages {
+                        stage('sanity') { steps { aci 'sanity', 'reports/sanity-*/junit/*.xml' } }
+                        stage('units') {
+                            when { expression { fileExists('tests/unit') } }
+                            steps { aci 'units', 'reports/units-*/junit/*.xml' }
                         }
                     }
                 }
             }
-            stage('Publication') {
-                when {
-                    allOf {
-                        expression { cfg.publish }
-                        buildingTag()
+            // Integration and Molecule need Podman: they run on the ansible-builder VM. The `when` is
+            // checked on the agent (after checkout), so the stage shows as skipped when the directory is absent.
+            stage('Container tests') {
+                parallel {
+                    stage('Integration') {
+                        agent { label 'ansible-builder' }
+                        when { expression { fileExists('tests/integration/targets') } }
+                        environment { ACI_TEST_MODE = 'docker' }
+                        steps { aci 'integration', 'reports/integration-*/junit/*.xml' }
+                    }
+                    stage('Molecule') {
+                        agent { label 'ansible-builder' }
+                        when { expression { fileExists('extensions/molecule') } }
+                        steps { aci 'molecule' }
                     }
                 }
+            }
+            stage('Publish') {
+                when { beforeAgent true; buildingTag() }
+                agent { kubernetes { inheritFrom 'ansible-runner'; defaultContainer 'runner' } }
                 steps {
-                    script {
-                        aciNode(cfg, 'runner') {
-                            unstash 'aci-dist'
-                            ansibleCollectionPublish()
-                        }
+                    aci 'build'
+                    withCredentials([string(credentialsId: 'nexus-galaxy-hosted-token', variable: 'ACI_GALAXY_TOKEN')]) {
+                        aci 'publish'
                     }
                 }
             }
         }
+    }
+}
+
+// Runs one `aci` subcommand, then archives reports/ and publishes the JUnit files matching `junitFiles`,
+// even when the command fails. The exit code of `aci` alone decides the stage result.
+void aci(String command, String junitFiles = '') {
+    try {
+        sh label: "aci ${command}", script: "/opt/ansible-ci/bin/aci ${command}"
+    } finally {
+        if (junitFiles) {
+            junit allowEmptyResults: true, skipMarkingBuildUnstable: true, testResults: junitFiles
+        }
+        archiveArtifacts allowEmptyArchive: true, artifacts: 'reports/**', excludes: '**/.tmp/**'
     }
 }

@@ -1,8 +1,12 @@
-# Controleur Jenkins de test : 2.580.1 + plugins pipeline/kubernetes/... (image de base du banc) + git.
+# Test controller: Jenkins 2.580.1 + pipeline/kubernetes/... plugins (bench base image) + git + JCasC.
+# The real infra/jenkins/jcasc.yaml is mounted at /casc/jcasc.yaml (bench values come from env variables).
 ARG JENKINS_IMAGE=localhost/jk:test
 FROM ${JENKINS_IMAGE}
-RUN jenkins-plugin-cli --plugins git
-# Depots de test en file:// (bibliotheque + collection) : autorise explicitement (SECURITY-2478)
-ENV JAVA_OPTS="-Djenkins.install.runSetupWizard=false -Dhudson.plugins.git.GitSCM.ALLOW_LOCAL_CHECKOUT=true"
+RUN jenkins-plugin-cli --plugins git configuration-as-code
+# Test repositories over file:// (library + collection): explicitly allowed (SECURITY-2478)
+ENV JAVA_OPTS="-Djenkins.install.runSetupWizard=false -Dhudson.plugins.git.GitSCM.ALLOW_LOCAL_CHECKOUT=true" \
+    CASC_JENKINS_CONFIG=/casc/jcasc.yaml
+USER root
+RUN rm -rf /usr/share/jenkins/ref/init.groovy.d /usr/share/jenkins/ref/e2e-jobs
+USER jenkins
 COPY init.groovy.d/ /usr/share/jenkins/ref/init.groovy.d/
-COPY jobs/ /usr/share/jenkins/ref/e2e-jobs/

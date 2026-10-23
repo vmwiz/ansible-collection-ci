@@ -1,0 +1,22 @@
+---
+- name: Create the test containers
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    # ansible-security-scanner reports an added "capability": false positive (podman + systemd heuristic).
+    - name: Start the systemd containers (rootless)  # nosec: linux_cap_bpf_granted_to_container_or_service reason="false positive"
+      containers.podman.podman_container:
+        name: "{{ item }}"
+        image: "{{ hostvars[item].molecule_image }}"
+        state: started
+        systemd: "always"
+        pull: never  # images already pulled from Nexus by aci prime-images
+      loop: "{{ groups['molecule'] }}"
+
+- name: Check that the targets respond
+  hosts: molecule
+  gather_facts: false
+  tasks:
+    - name: Wait for the connection
+      ansible.builtin.wait_for_connection:
+        timeout: 60

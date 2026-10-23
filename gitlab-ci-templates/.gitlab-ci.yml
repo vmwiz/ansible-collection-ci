@@ -1,18 +1,18 @@
-# Pipeline du PROJET COMPOSANT (ci/ansible-collection-ci) : valide le modele, l'essaie sur la collection
-# d'exemple, publie la version dans le catalogue CI/CD sur tag (x.y.z).
+# Pipeline of the COMPONENT PROJECT (ci/ansible-collection-ci): validates the template, tries it on the
+# example collection, publishes the release in the CI/CD catalog on tags (x.y.z).
 stages: [validate, test, release]
 
 validate:
   stage: validate
-  image: nexus.corp.local:8443/ci/ansible-collection-runner:2026.10   # PyYAML + check-jsonschema (voir README)
+  image: nexus.corp.local:8443/ci/ansible-collection-runner:2026.10   # PyYAML + check-jsonschema (see README)
   tags: [ansible-runner]
   variables:
-    GITLAB_CI_SCHEMA: tests/gitlab-ci-schema.json   # copie du schema officiel, mise a jour avec GitLab
+    GITLAB_CI_SCHEMA: tests/gitlab-ci-schema.json   # copy of the official schema, updated with GitLab
   script:
     - /opt/ansible-ci/bin/python -m pip install -q check-jsonschema
     - PATH=/opt/ansible-ci/bin:$PATH tests/validate.sh "$GITLAB_CI_SCHEMA"
 
-# Essai reel du composant a la version du commit, sur la collection d'exemple (copie dans tests/collection)
+# Real run of the component at the commit version, on the example collection (copy in tests/collection)
 include:
   - component: $CI_SERVER_FQDN/$CI_PROJECT_PATH/ansible-collection@$CI_COMMIT_SHA
     inputs:
@@ -20,18 +20,18 @@ include:
       stage-test: test
       publish: false
 
-variables:   # la collection d'essai est dans un sous-dossier ; rapports et tarball restent a la racine
+variables:   # the test collection is in a subdirectory; reports and tarball stay at the root
   ACI_SRC: $CI_PROJECT_DIR/tests/collection
   ACI_REPORTS: $CI_PROJECT_DIR/reports
   ACI_DIST: $CI_PROJECT_DIR/dist
 
 release:
   stage: release
-  image: nexus.corp.local:8443/gitlab-org/cli:latest   # PLACEHOLDER : miroir Nexus de l'image glab
+  image: nexus.corp.local:8443/gitlab-org/cli:latest   # PLACEHOLDER: Nexus mirror of the glab image
   tags: [ansible-runner]
   rules:
     - if: $CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+$/
-  script: echo "Publication de $CI_COMMIT_TAG dans le catalogue CI/CD"
+  script: echo "Publishing $CI_COMMIT_TAG to the CI/CD catalog"
   release:
     tag_name: $CI_COMMIT_TAG
-    description: "Voir CHANGELOG.md"
+    description: "See CHANGELOG.md"

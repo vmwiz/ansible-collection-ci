@@ -1,18 +1,18 @@
 ---
-# Preparation d'une VM "ansible-builder" (agent Jenkins / runner GitLab shell) avec podman rootless.
-# Cible : RHEL / Rocky / Alma 9-10 ou Fedora (dnf). Depots dnf et PyPI servis par Nexus.
-#   ansible-playbook -i inventaire site.yml -e builder_ci_user=jenkins
-- name: Preparer la VM ansible-builder
+# Prepares an "ansible-builder" VM (Jenkins agent / GitLab shell runner) with rootless podman.
+# Target: RHEL / Rocky / Alma 9-10 or Fedora (dnf). dnf and PyPI repositories served by Nexus.
+#   ansible-playbook -i inventory site.yml -e builder_ci_user=jenkins
+- name: Prepare the ansible-builder VM
   hosts: ansible_builder
   become: true
   vars:
     builder_ci_user: jenkins
     builder_subid_start: 100000
     builder_subid_count: 65536
-    # Pythons controleur ansible-test : 2.16 -> 3.10-3.12 ; 2.18 -> 3.11-3.13 ; 2.20 -> 3.12-3.14 ;
-    # 2.22 -> 3.13-3.15. 3.12 couvre 2.16, 2.18, 2.20 et la certification (Python des EE AAP 2.6).
-    # Ajouter python3.14 a builder_extra_pythons seulement pour 2.22 / milestone / devel.
-    # `aci` choisit par serie (share/aci/python-map.txt).
+    # ansible-test controller Pythons: 2.16 -> 3.10-3.12; 2.18 -> 3.11-3.13; 2.20 -> 3.12-3.14;
+    # 2.22 -> 3.13-3.15. 3.12 covers 2.16, 2.18, 2.20 and the certification (Python of the AAP 2.6 EEs).
+    # Add python3.14 to builder_extra_pythons only for 2.22 / milestone / devel.
+    # `aci` picks per series (share/aci/python-map.txt).
     builder_python: python3.12
     builder_extra_pythons: []
     builder_packages:
@@ -36,23 +36,23 @@
     builder_pip_index: https://nexus.corp.local/repository/pypi-group/simple
     builder_venv: /opt/ansible-ci
     builder_pyyaml_version: "6.0.3"
-    # Scripts aci : MEME version que l'image runner / la bibliotheque Jenkins / le composant GitLab.
-    # Chemin sur le controleur Ansible (checkout du tag v1.x.y du depot ansible-collection-ci).
+    # aci scripts: SAME version as the runner image.
+    # Path on the Ansible controller (checkout of the matching tag of the ansible-collection-ci repository).
     builder_aci_src: "{{ playbook_dir }}/../../ci-scripts"
   tasks:
-    - name: Installer les paquets (depots dnf via Nexus)
+    - name: Install the packages (dnf repositories through Nexus)
       ansible.builtin.dnf:
         name: "{{ builder_packages + builder_extra_pythons + (builder_extra_pythons | map('regex_replace', '$', '-pip') | list) }}"
         state: present
 
-    - name: Deposer l'AC interne
+    - name: Install the internal CA
       ansible.builtin.copy:
         src: "{{ builder_ca_src }}"
         dest: /etc/pki/ca-trust/source/anchors/corp-ca.crt
         mode: "0644"
-      notify: Mettre a jour le magasin de certificats
+      notify: Update the certificate store
 
-    - name: Configurer pip vers Nexus (fichier systeme)
+    - name: Point pip to Nexus (system-wide file)
       ansible.builtin.copy:
         dest: /etc/pip.conf
         mode: "0644"
@@ -63,19 +63,19 @@
           timeout = 60
           retries = 5
 
-    - name: Miroirs de registres pour podman (quay.io, docker.io, ghcr.io -> Nexus)
+    - name: Registry mirrors for podman (quay.io, docker.io, ghcr.io -> Nexus)
       ansible.builtin.copy:
         src: templates/registries-nexus.conf
         dest: /etc/containers/registries.conf.d/50-nexus-mirrors.conf
         mode: "0644"
 
-    - name: Creer l'utilisateur CI
+    - name: Create the CI user
       ansible.builtin.user:
         name: "{{ builder_ci_user }}"
         shell: /bin/bash
         create_home: true
 
-    - name: Plages d'UID/GID subordonnes pour podman rootless
+    - name: Subordinate UID/GID ranges for rootless podman
       ansible.builtin.lineinfile:
         path: "{{ item }}"
         regexp: "^{{ builder_ci_user }}:"
@@ -86,19 +86,19 @@
         - /etc/subuid
         - /etc/subgid
 
-    - name: Session systemd persistante (XDG_RUNTIME_DIR + delegation cgroup v2 pour systemd dans les conteneurs)
+    - name: Persistent systemd session (XDG_RUNTIME_DIR + cgroup v2 delegation for systemd in containers)
       ansible.builtin.command:
         cmd: "loginctl enable-linger {{ builder_ci_user }}"
         creates: "/var/lib/systemd/linger/{{ builder_ci_user }}"
 
-    - name: Venv d'outillage des scripts aci (PyYAML) depuis le proxy PyPI
+    - name: Tooling venv of the aci scripts (PyYAML) from the PyPI proxy
       ansible.builtin.pip:
         name:
           - "PyYAML=={{ builder_pyyaml_version }}"
         virtualenv: "{{ builder_venv }}"
         virtualenv_command: "{{ builder_python }} -m venv"
 
-    - name: Installer les scripts aci comme dans l'image runner (/opt/ansible-ci)
+    - name: Install the aci scripts like in the runner image (/opt/ansible-ci)
       ansible.builtin.copy:
         src: "{{ builder_aci_src }}/{{ item }}"
         dest: "{{ builder_venv }}/{{ item | dirname }}/"
@@ -109,13 +109,13 @@
         - lib/aci
         - share/aci
 
-    - name: Verifier les scripts aci
+    - name: Check the aci scripts
       ansible.builtin.command:
         cmd: "{{ builder_venv }}/bin/aci version"
       changed_when: false
 
   handlers:
-    - name: Mettre a jour le magasin de certificats
+    - name: Update the certificate store
       ansible.builtin.command:
         cmd: update-ca-trust
       changed_when: true

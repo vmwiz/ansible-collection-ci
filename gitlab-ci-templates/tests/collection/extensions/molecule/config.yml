@@ -1,6 +1,6 @@
 ---
-# Configuration Molecule "ansible-native" (Molecule >= 25.9) partagee par tous les scenarios.
-# Pas de driver : le scenario "default" cree/detruit les conteneurs avec containers.podman.
+# "ansible-native" Molecule configuration (Molecule >= 25.9) shared by all scenarios.
+# No driver: the "default" scenario creates/destroys the containers with containers.podman.
 ansible:
   executor:
     args:

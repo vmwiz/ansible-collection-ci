@@ -1,7 +1,0 @@
-// Doit echouer DES l'introspection : EE 2.18 en Python 3.10 (hors plage controleur 3.11-3.13).
-@Library('ansible-ci@v1') _
-
-ansibleCollectionPipeline(
-    targetEEs: ['hub.corp.local/ansible-automation-platform/ee-minimal-rhel9:2.16', 'hub.corp.local/ee-legacy:bad'],
-    agentType: 'label', builderLabel: 'ansible-runner', testMode: 'venv',
-)

@@ -1,0 +1,14 @@
+---
+argument_specs:
+  main:
+    short_description: Writes /etc/motd
+    description:
+      - Writes the file C(/etc/motd) with the content of O(motd_message).
+    author:
+      - coreOps
+    options:
+      motd_message:
+        type: str
+        default: "Server managed by Ansible"
+        description:
+          - Content of the file C(/etc/motd).

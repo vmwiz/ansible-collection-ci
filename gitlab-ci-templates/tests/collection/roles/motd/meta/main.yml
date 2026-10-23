@@ -1,7 +1,7 @@
 ---
 galaxy_info:
   author: corp
-  description: Depose /etc/motd (role d'exemple pour le scenario Molecule)
+  description: Writes /etc/motd (example role for the Molecule scenario)
   license: GPL-3.0-or-later
   min_ansible_version: "2.16"
   platforms:

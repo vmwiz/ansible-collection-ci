@@ -1,5 +1,5 @@
-# TEST UNIQUEMENT : emule l'image de base d'entreprise "ubi9-corp:9.8" (UBI 9 + python3 systeme 3.9,
-# AC interne, /etc/pip.conf vers le proxy PyPI, depots microdnf). Ici les depots restent ceux d'UBI.
+# TEST ONLY: emulates the corporate base image "ubi9-corp:9.8" (UBI 9 + system python3 3.9,
+# internal CA, /etc/pip.conf to the PyPI proxy, microdnf repositories). Here the repositories stay UBI's.
 FROM registry.access.redhat.com/ubi9/ubi-minimal:latest
 RUN microdnf -y install --setopt=install_weak_deps=0 --nodocs python3 python3-pip && microdnf clean all
 COPY corp-test-ca.crt /etc/pki/ca-trust/source/anchors/corp-test-ca.crt

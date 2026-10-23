@@ -1,5 +1,5 @@
 ---
-- name: Deposer /etc/motd
+- name: Write /etc/motd
   ansible.builtin.copy:
     dest: /etc/motd
     content: "{{ motd_message }}\n"

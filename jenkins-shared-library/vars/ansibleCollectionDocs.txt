@@ -1,2 +1,0 @@
-ansibleCollectionDocs(Map opts = [:]) - antsibull-docs lint-collection-docs --plugin-docs.
-Options : args, core, cles d'ansibleCollectionPipeline.
