@@ -1,14 +1,14 @@
 # syntax=docker/dockerfile:1
-# CI "runner" image for Ansible collections: OpenShift pods (Jenkins / GitLab), WITHOUT a container engine.
+# ci-tools-image: CI tools image for Ansible collections, OpenShift pods (Jenkins / GitLab), WITHOUT a container engine.
 # Built on the corporate UBI 9 base image, which already provides (contract, see README.md):
 #   * the internal CA in the system store (/etc/pki/ca-trust) + REQUESTS_CA_BUNDLE / SSL_CERT_FILE;
 #   * /etc/pip.conf pointing to the Nexus PyPI proxy (read for root as well as for an arbitrary UID);
 #   * yum/microdnf repositories to the internal mirror, BaseOS AND AppStream (python3.12 is in AppStream).
 #
 # Build context = ROOT of the ansible-collection-ci repository (the image embeds ci-scripts/):
-#   podman build -f infra/runner-image/Dockerfile \
+#   podman build -f infra/ci-tools-image/Containerfile \
 #     --build-arg BASE_IMAGE=nexus.corp.local:8443/corp/ubi9-corp:9.8 \
-#     -t nexus.corp.local:8443/ci/ansible-collection-runner:2026.10 .
+#     -t nexus.corp.local:8443/corp/ci-tools-image:2026.10 .
 #
 # No docker CLI: the stages that need an engine run on the ansible-builder VM (host podman).
 # ansible-core is NOT installed here: `aci` creates (and caches) one venv per matrix series.
@@ -44,7 +44,7 @@ RUN set -eux; \
     microdnf clean all; rm -rf /var/cache/yum /var/lib/dnf/history*
 
 # 2) Minimal tooling venv (PyYAML for the aci scripts, shellcheck) - index: /etc/pip.conf
-COPY infra/runner-image/requirements.txt /opt/ansible-ci/requirements.txt
+COPY infra/ci-tools-image/requirements.txt /opt/ansible-ci/requirements.txt
 RUN set -eux; \
     for v in ${PYTHON_VERSIONS}; do tools_py=$v; done; \
     "python${tools_py}" -m venv /opt/ansible-ci; \

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Bench: really runs the scripts of the component's RENDERED jobs (render.py), without GitLab.
-#   "runner" jobs (pods) -> container of the runner image on the airgap network, arbitrary UID, cap-drop ALL;
+#   "runner" jobs (pods) -> container of the ci-tools-image on the airgap network, arbitrary UID, cap-drop ALL;
 #   aci-ee-introspect (shell runner of the ansible-builder VM) -> on the bench host, with podman.
 # Every job starts from a fresh clone (like a runner); the introspection artifacts are copied over;
 # /tmp/gl/cache simulates the persistent ~/.cache/ansible-ci volume of the Kubernetes runner.
@@ -9,7 +9,7 @@ set -uo pipefail
 here=$(cd "$(dirname "$0")" && pwd); root=$(cd "$here/../.." && pwd)
 G=$root/gitlab-ci-templates; T=$G/templates/ansible-collection/template.yml
 inputs=$1 ctx=$2 jobs=$3
-OUT=${OUT:-/tmp/gl/out}; W=${W:-/tmp/gl/work}; IMAGE=${IMAGE:-localhost/ansible-collection-runner:ubi9-v4}
+OUT=${OUT:-/tmp/gl/out}; W=${W:-/tmp/gl/work}; IMAGE=${IMAGE:-localhost/corp/ci-tools-image:2026.10}
 REPO=${REPO:-/tmp/gl/repos/corp-demo.git}
 mkdir -p "$OUT" "$W" /tmp/gl/cache; chmod 0777 /tmp/gl/cache
 run_one() {

@@ -19,7 +19,7 @@ spec:
     - name: jnlp
       image: nexus.corp.local:8443/jenkins/inbound-agent:latest-jdk21
     - name: runner
-      image: nexus.corp.local:8443/ci/ansible-collection-runner-podman:2026.10  # variant with podman
+      image: nexus.corp.local:8443/corp/ci-tools-image-podman:2026.10  # variant with podman
       command: ["sleep"]
       args: ["infinity"]
       securityContext:

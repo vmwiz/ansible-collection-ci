@@ -1,16 +1,19 @@
 # Proposal: CI libraries to test and validate Ansible collections (airgapped, Jenkins and GitLab, AAP 2.6)
 
-*Version 2.0.0, 23/10/2026 (Jenkins library reduced to one fixed pipeline; everything in English).
-Previous revisions: 1.0.0 (20/10/2026), 1.0.1 (21/10/2026).*
+*Version 2.1.0, 26/10/2026 (site settings as pipeline parameters, pod template in the library).
+Previous revisions: 1.0.0 (20/10/2026), 1.0.1 (21/10/2026), 2.0.0 (23/10/2026).*
 
-**What changed in 2.0.0**
-* The **Jenkins shared library is a single fixed declarative pipeline** (`vars/ansibleCollectionPipeline.groovy`,
-  ~120 lines): no parameters, no granular steps, no Groovy classes, no copy of the `aci` scripts. It is the
-  same for every collection.
-* Site settings (Nexus URLs, Spotter endpoint, runner image, agents, credentials) moved to Jenkins
-  Configuration as Code: [`infra/jenkins/jcasc.yaml`](infra/jenkins/jcasc.yaml).
+**What changed in 2.x**
+* The **Jenkins shared library is a single fixed declarative pipeline** (`vars/ansibleCollectionPipeline.groovy`):
+  no granular steps, no Groovy classes, no copy of the `aci` scripts. Stages and matrix are the same for
+  every collection.
+* **2.1.0**: site settings (Nexus URLs, Spotter, ci-tools-image, agent label, credential IDs) are **pipeline
+  parameters with defaults**, defined in one map at the top of the Groovy file; the OpenShift **pod template
+  ships with the library** (`resources/ansible-ci/pod.yaml`, image substituted from `ciToolsImage`); the admin
+  setup is plain *Manage Jenkins* configuration (library, credentials, Kubernetes cloud, agents). The runner
+  image is renamed **ci-tools-image**.
 * Optional stages (units, integration, Molecule) are selected by the repository content, not by parameters.
-* The pipeline calls the `aci` CLI baked into the runner image and the ansible-builder VM
+* The pipeline calls the `aci` CLI baked into the ci-tools-image and the ansible-builder VM
   (`/opt/ansible-ci/bin/aci`).
 * All documentation, comments and messages are in English (`aci` 1.1.0).
 * The GitLab component is unchanged apart from the translation (still 46 inputs).
@@ -63,9 +66,8 @@ flowchart LR
     aci[ci-scripts/: bash CLI aci 1.1.0<br/>+ Python helpers, pinned versions,<br/>certification.env]
     jsl[jenkins-shared-library/<br/>vars/ansibleCollectionPipeline.groovy]
     glc[gitlab-ci-templates/<br/>templates/ansible-collection]
-    img[infra/runner-image<br/>UBI 9 + py3.12 + aci]
+    img[infra/ci-tools-image<br/>UBI 9 + py3.12 + aci]
     vm[infra/ansible-builder-vm<br/>podman + aci]
-    casc[infra/jenkins/jcasc.yaml<br/>site settings]
   end
   aci -- COPY --> img
   aci -- playbook --> vm
@@ -73,10 +75,9 @@ flowchart LR
   col -->|@Library ansible-ci@v2| jk[Jenkins]
   col -->|include: component @1| gl[GitLab CI]
   jsl --> jk
-  casc --> jk
   glc --> gl
   subgraph OCP[OpenShift restricted-v2]
-    pod[runner pod: static checks, certification,<br/>sanity/units --venv]
+    pod[ci-tools-image pod: static checks, certification,<br/>sanity/units --venv]
   end
   subgraph VMB[ansible-builder VM]
     pdm[podman: --docker, integration,<br/>molecule, EE introspection]
@@ -89,10 +90,10 @@ flowchart LR
 | Component | Role | How the `aci` scripts arrive |
 |---|---|---|
 | `ci-scripts/` | **Single source**: `bin/aci` (dispatcher), `lib/aci/common.sh`, `lib/aci/cmd/*.sh` (one command per file), `lib/aci/py/*.py`, `share/aci/` (constraints, configurations, `python-map.txt`, `certification.env`) | — |
-| `jenkins-shared-library/` | one fixed declarative pipeline, `vars/ansibleCollectionPipeline.groovy` | **from the runner image / VM** (`/opt/ansible-ci/bin/aci`) |
-| `infra/jenkins/jcasc.yaml` | library declaration, global environment, pod template `ansible-runner`, credentials | — |
-| `gitlab-ci-templates/` | component `ansible-collection` (46 inputs) | **from the runner image / VM** (a component can only ship YAML) |
-| `infra/runner-image/` | image of the pods (Jenkins and GitLab) | `COPY ci-scripts` |
+| `jenkins-shared-library/` | one fixed declarative pipeline, `vars/ansibleCollectionPipeline.groovy` (site parameters with defaults) + pod template `resources/ansible-ci/pod.yaml` | **from the ci-tools-image / VM** (`/opt/ansible-ci/bin/aci`) |
+| `infra/jenkins/` | admin setup in *Manage Jenkins* (library, credentials, Kubernetes cloud, agents) | — |
+| `gitlab-ci-templates/` | component `ansible-collection` (46 inputs) | **from the ci-tools-image / VM** (a component can only ship YAML) |
+| `infra/ci-tools-image/` | image of the pods (Jenkins and GitLab) | `COPY ci-scripts` |
 | `infra/ansible-builder-vm/` | podman VM (Jenkins agent, GitLab `shell` runner) | copied by the playbook |
 
 `aci` commands: `lint`, `docs`, `build`, `importer`, `certification [sanity-cores]`, `changelog-check`,
@@ -101,8 +102,8 @@ flowchart LR
 `ACI_TEST_MODE`, `ACI_PYPI_ENDPOINT`, `ACI_GALAXY_*`...; full list in [README.md](README.md)). Locally, a
 developer runs the same thing: `ACI_CORE=2.18 /opt/ansible-ci/bin/aci sanity`.
 
-Since the runner image carries `aci`, **its tag is the version of the scripts**: on Jenkins it is set once
-in the pod template of `jcasc.yaml`, on GitLab by the `runner-image` input (checked against
+Since the ci-tools-image carries `aci`, **its tag is the version of the scripts**: on Jenkins it is the `ciToolsImage`
+parameter (site default in the library), on GitLab by the `runner-image` input (checked against
 `ACI_EXPECTED_VERSION`).
 
 ## 3. AAP 2.6 alignment
@@ -121,7 +122,7 @@ in the pod template of `jcasc.yaml`, on GitLab by the `runner-image` input (chec
 
 The ranges come from `CONTROLLER_PYTHON_VERSIONS` of the ansible-test `stable-2.16/2.18/2.20` branches.
 They are centralised in `share/aci/python-map.txt`, where 3.12 comes first for every series that accepts it
-(2.16 → 2.21). The runner image and the VM therefore only need **python3.12**. 2.22, `milestone` and
+(2.16 → 2.21). The ci-tools-image and the VM therefore only need **python3.12**. 2.22, `milestone` and
 `devel` (controller ≥ 3.13) need python3.14 added to the image (`PYTHON_VERSIONS="3.12 3.14"`). Without
 it, `aci` stops with "no controller Python for ansible-core 2.22 on this agent".
 
@@ -142,7 +143,7 @@ the value to use). The Jenkins pipeline has no EE introspection: its matrix is f
 | Static checks › Certification | `certification` | pod | always |
 | Static checks › Build | `build`, `importer` (tarball archived) | pod | always |
 | Static checks › Security scan | `security-scan` (blocking from HIGH) | pod | always |
-| Static checks › Spotter | `spotter` (private instance), findings → UNSTABLE | pod | `SPOTTER_ENDPOINT` set by the admins |
+| Static checks › Spotter | `spotter` (private instance), findings → UNSTABLE | pod | `spotterEndpoint` not empty |
 | Static checks › Changelog fragment | `changelog-check` | pod | pull requests (`changeRequest()`) |
 | ansible-test (matrix `ACI_CORE` = 2.16, 2.18, 2.20) | `sanity`, `units` | pod (`venv` mode) | always; units if `tests/unit/` exists |
 | Container tests › Integration | `integration` (`ACI_TEST_MODE=docker`, default image, ansible-core 2.18) | VM | `tests/integration/targets/` exists |
@@ -208,10 +209,13 @@ ACI_CERT_SUPPORTED_CORES="2.16 2.18 2.20"    + list of allowed ignores, mandator
 
 ## 6. Configuration
 
-### 6.1 Jenkins: no parameters, site settings in JCasC
+### 6.1 Jenkins: fixed stages, site settings as parameters
 
-The Jenkinsfile passes nothing. What used to be ~60 parameters is now either fixed in the pipeline or a
-site setting set once by the Jenkins admins in [`infra/jenkins/jcasc.yaml`](infra/jenkins/jcasc.yaml):
+What used to be ~60 parameters (1.x) is now either fixed in the pipeline or one of ten **site parameters**
+with defaults, defined in a single `DEFAULTS` map at the top of `vars/ansibleCollectionPipeline.groovy`.
+A Jenkinsfile normally passes nothing; it can override a site parameter
+(`ansibleCollectionPipeline(spotterEndpoint: 'https://spotter.corp.local/api', spotterCredentialsId: 'my-team-spotter')`).
+Unknown keys stop the build before any agent is allocated.
 
 | Setting | Where | Value |
 |---|---|---|
@@ -219,29 +223,28 @@ site setting set once by the Jenkins admins in [`infra/jenkins/jcasc.yaml`](infr
 | Test mode | pipeline (fixed) | `venv` in the pod for sanity/units, `docker` on the VM for integration |
 | Optional stages | repository content | `tests/unit/`, `tests/integration/targets/`, `extensions/molecule/` |
 | Timeouts, history | pipeline (fixed) | 90 min per build, 20 builds kept |
-| Nexus (Galaxy group/hosted, PyPI for containers, quay.io mirror) | JCasC global environment | `ACI_GALAXY_URL`, `ACI_GALAXY_PUBLISH_URL`, `ACI_PYPI_ENDPOINT`, `ACI_IMAGE_MIRROR` |
-| Spotter | JCasC global environment | `SPOTTER_ENDPOINT` (empty = stage skipped), `SPOTTER_CACERT` |
-| Runner image (= `aci` version) | JCasC pod template `ansible-runner` | `nexus.corp.local:8443/ci/ansible-collection-runner:2026.10` |
-| Podman agents | Jenkins nodes | label `ansible-builder` |
-| Secrets | JCasC credentials (Secret text) | `spotter-api-token`, `nexus-galaxy-hosted-token` |
-| Library version | JCasC `globalLibraries` | default `v2` |
+| Nexus | parameters `galaxyUrl`, `galaxyPublishUrl`, `pypiEndpoint`, `imageMirror` | → `ACI_GALAXY_URL`, `ACI_GALAXY_PUBLISH_URL`, `ACI_PYPI_ENDPOINT`, `ACI_IMAGE_MIRROR` |
+| Spotter | parameters `spotterEndpoint` (empty = stage skipped), `spotterCacert` | → `SPOTTER_ENDPOINT`, `SPOTTER_CACERT` |
+| ci-tools-image (= `aci` version) | parameter `ciToolsImage`, substituted into `resources/ansible-ci/pod.yaml` | `nexus.corp.local:8443/corp/ci-tools-image:2026.10` |
+| Podman agents | parameter `builderLabel` | `ansible-builder` |
+| Secrets | parameters `spotterCredentialsId`, `galaxyCredentialsId` = IDs of Jenkins Secret text credentials | `spotter-api-token`, `nexus-galaxy-hosted-token` |
+| Library version | *Manage Jenkins* global library | default `v2` |
 
-The only names hard-coded in the Groovy are these conventions: pod template `ansible-runner`, container
-`runner`, label `ansible-builder`, the two credential IDs and `/opt/ansible-ci/bin/aci`.
+Admin setup (library, credentials, Kubernetes cloud, agents): [`infra/jenkins/README.md`](infra/jenkins/README.md).
 
 ### 6.2 GitLab: inputs
 
-The component keeps its 46 inputs (stages, runner image and tags, matrix, per-job switches, ansible-test
+The component keeps its 46 inputs (stages, ci-tools-image and tags, matrix, per-job switches, ansible-test
 arguments, Nexus URLs, scanner thresholds); full table in `gitlab-ci-templates/README.md`. They are checked
 by GitLab (types, `options`, `regex`) when the pipeline is created. Simplifying the component in the same
-way as the Jenkins library is possible but not done in 2.0.0.
+way as the Jenkins library is possible but not done in 2.x.
 
 ## 7. Versioning and release
 
 ### 7.1 Rules
 * **SemVer** per deliverable:
-  * Jenkins library: tags `vX.Y.Z` + **moving tag `v2`** (the library `defaultVersion`). Current: **2.0.0**.
-  * `aci` scripts and runner image: `ci-scripts/VERSION` = image tag `aci-X.Y.Z`. Current: **1.1.0**.
+  * Jenkins library: tags `vX.Y.Z` + **moving tag `v2`** (the library default version). Current: **2.1.0**.
+  * `aci` scripts and ci-tools-image: `ci-scripts/VERSION` = image tag `aci-X.Y.Z`. Current: **1.1.0**.
   * GitLab component: tags `X.Y.Z` (catalog format). Current: **1.1.0** (`ACI_EXPECTED_VERSION` = `ci-scripts/VERSION`).
 * **Patch**: fix. **Minor**: compatible change (new stage that only runs when the repository opts in,
   compatible tool update). **Major**: changed default behaviour (e.g. matrix change for AAP 2.7), removed
@@ -254,15 +257,15 @@ way as the Jenkins library is possible but not done in 2.0.0.
    (`tests/jenkins-e2e/run-e2e.sh`, `tests/gitlab-jobs/run-jobs.sh`, see `tests/README.md`).
 3. Update `VERSION`, the `CHANGELOG.md` files, `ACI_EXPECTED_VERSION` and the default `runner-image` of the
    component (`validate.sh` checks consistency).
-4. Build and push the runner image (`2026.MM` + `aci-X.Y.Z`), update the image tag in `jcasc.yaml`, re-run
-   the VM playbook.
+4. Build and push the ci-tools-image (`2026.MM` + `aci-X.Y.Z`), update the `ciToolsImage` default of the
+   Jenkins library, re-run the VM playbook.
 5. Publish:
    * `git subtree split --prefix jenkins-shared-library` → repository `ci/ansible-ci-jenkins`, tag `vX.Y.Z`
      and move the `v2` tag;
    * `git subtree split --prefix gitlab-ci-templates` → component project `ci/ansible-collection-ci`, tag
      `X.Y.Z` (`release` job).
 
-### 7.3 Why the scripts live in the runner image
+### 7.3 Why the scripts live in the ci-tools-image
 Three options were assessed: scripts **baked into the image**, **cloned by the job**, or **inline in the
 YAML** (details in `gitlab-ci-templates/README.md`). Baked into the image wins: no extra network access in
 jobs, version pinned by the image tag, same tested files for Jenkins and GitLab. Until 1.0.1 the Jenkins
@@ -285,7 +288,7 @@ which removes `tools/sync.sh`'s scripts copy and the risk of two diverging versi
 
 ## 9. Agents
 
-| Stage | OpenShift pod (`restricted-v2`, runner image, no container engine) | `ansible-builder` VM (rootless podman) |
+| Stage | OpenShift pod (`restricted-v2`, ci-tools-image, no container engine) | `ansible-builder` VM (rootless podman) |
 |---|---|---|
 | lint, docs, build, galaxy-importer, certification, changelog, security, spotter, publication | ✔ | |
 | sanity/units in `--venv` mode (Python 3.12) | ✔ | |
@@ -293,10 +296,12 @@ which removes `tools/sync.sh`'s scripts copy and the risk of two diverging versi
 | EE introspection, integration, Molecule, EE POC | | ✔ |
 
 ### 9.1 Jenkins pod and GitLab runner
-* **Jenkins**: pod template `ansible-runner` in `jcasc.yaml`: containers `jnlp` and `runner`,
-  `runAsNonRoot`, seccomp `RuntimeDefault`, `drop: ALL`, no privilege escalation, no `runAsUser` (the UID is
-  assigned by OpenShift) and an `emptyDir` for `/tmp`. The pipeline uses it with
-  `kubernetes { inheritFrom 'ansible-runner'; defaultContainer 'runner' }`.
+* **Jenkins**: pod template `resources/ansible-ci/pod.yaml` in the library: containers `jnlp` and `runner`
+  (image `@@CI_TOOLS_IMAGE@@` ← `ciToolsImage`), `runAsNonRoot`, seccomp `RuntimeDefault`, `drop: ALL`, no
+  privilege escalation, no `runAsUser` (OpenShift assigns an arbitrary UID with GID 0), requests/limits and
+  an `emptyDir` for `/tmp`. The pipeline reads it once with `libraryResource`, substitutes the image and
+  uses it with `kubernetes { yaml podYaml; defaultContainer 'runner' }`; the Kubernetes cloud needs no pod
+  template.
 * **GitLab**: Kubernetes runner (tag `ansible-runner`), `privileged = false`, `cap_drop = ["ALL"]`, helper
   `gitlab-runner-helper-ocp` from Nexus; `shell` runner on the VM (tag `ansible-builder`). See
   `infra/gitlab-runner/config.toml.example`.
@@ -331,7 +336,7 @@ which removes `tools/sync.sh`'s scripts copy and the risk of two diverging versi
 | `quay-proxy` | Docker proxy (dedicated connector, e.g. port 8444) | `https://quay.io` | `quay.io/ansible/*-test-container`, `ansible-test-utility-container`, `quay.io/ansible-community/test-image:*` |
 | `dockerhub-proxy` | Docker proxy | `https://registry-1.docker.io` | *optional*: service images of integration / Molecule targets (mysql, postgres, vault...) |
 | `ghcr-proxy` | Docker proxy (e.g. port 8445) | `https://ghcr.io` | *optional*: helper images of some targets (e.g. `ghcr.io/ansible-collections/*`) |
-| `docker-hosted` (+ `docker-group`, e.g. port 8443) | Docker hosted / group | — | corporate UBI 9 base image, runner image, internal Molecule images |
+| `docker-hosted` (+ `docker-group`, e.g. port 8443) | Docker hosted / group | — | corporate UBI 9 base image, ci-tools-image, internal Molecule images |
 | `ansible-proxy` | **Ansible** proxy (Nexus ≥ 3.93.0) | `https://galaxy.ansible.com` | collection dependencies |
 | `ansible-hosted` | Ansible hosted | — | **publication** of internal collections |
 | `ansible-group` | Ansible group | proxy + hosted | single resolution point for `ansible-galaxy` |
@@ -339,7 +344,7 @@ which removes `tools/sync.sh`'s scripts copy and the risk of two diverging versi
 | `raw-hosted` | Raw | — | *optional*: ansible-core `devel`/`milestone` tarballs (`ACI_CORE_SRC_DEVEL` / `ACI_CORE_SRC_MILESTONE`), kind/helm binaries. The `get-pip` scripts are **no longer** needed (§12) |
 | `gitlab-registry-proxy` (e.g. port 8446) | Docker proxy | `https://registry.gitlab.com` | helper image `gitlab-runner-helper-ocp` for the Kubernetes executor on OpenShift |
 | `redhat-registry-proxy` (e.g. port 8447) | Docker proxy | `https://registry.redhat.io` (Red Hat service account) | **AAP EEs** (`ansible-automation-platform-26/ee-minimal-rhel9`...) for `target-ees`; or Private Automation Hub |
-| `rpm-proxy` / BaseOS-AppStream repositories (+ optional EPEL 9) | Yum proxy | RHEL 9 / UBI 9 repositories | corporate UBI 9 base image and runner image (`python3.12` is in **AppStream**); `ansible-builder` VM (podman, python3.12...); EPEL only for the `ShellCheck` RPM |
+| `rpm-proxy` / BaseOS-AppStream repositories (+ optional EPEL 9) | Yum proxy | RHEL 9 / UBI 9 repositories | corporate UBI 9 base image and ci-tools-image (`python3.12` is in **AppStream**); `ansible-builder` VM (podman, python3.12...); EPEL only for the `ShellCheck` RPM |
 
 Nexus notes:
 * enable the **Docker Bearer Token** and **Ansible Galaxy Bearer Token** realms ([Sonatype doc](https://help.sonatype.com/en/configure-ansible-with-nexus.html)). The Nexus Galaxy token is `base64("user:password")`;
@@ -350,7 +355,7 @@ Nexus notes:
 
 ## 11. Images
 
-### 11.1 Runner image (`infra/runner-image/`, details in its README)
+### 11.1 ci-tools-image (`infra/ci-tools-image/`, details in its README)
 * `FROM` the corporate **UBI 9** base image (`ARG BASE_IMAGE`, default `nexus.corp.local:8443/corp/ubi9-corp:9.8`,
   placeholder). The CA, `/etc/pip.conf` (Nexus) and the internal microdnf repositories come from this base.
 * Adds **python3.12** from AppStream: it covers 2.16, 2.18, 2.20, the certification and matches the Python
@@ -424,21 +429,21 @@ The bench (`tests/`, not shipped): devpi + static Galaxy v3 behind `nexus.corp.l
 the airgapped runs, UID `1000680000:0`, `--cap-drop ALL`, `no-new-privileges`, collection `corp.demo`
 (module, role `motd`, Molecule), `requires_ansible: '>=2.16.0'`.
 
-### 14.1 Release 2.0.0 (23/10/2026)
+### 14.1 Releases 2.0.0 (23/10/2026) and 2.1.0 (26/10/2026)
 * `aci` 1.1.0 (translated messages): shellcheck clean, `ci-scripts/tests/smoke.sh`, `ci-scripts/tests/guards.sh`
   (assertions updated to the English messages).
 * GitLab component 1.1.0 (translated): `gitlab-ci-templates/tests/validate.sh` against the official GitLab
   schema.
 * Jenkins library 2.0.0: Groovy compiled with the Groovy of Jenkins 2.580.1 (groovy-all 2.4.21), and run end
-  to end on **Jenkins 2.580.1** by `tests/jenkins-e2e/run-e2e.sh`, with Jenkins configured by the real
-  `infra/jenkins/jcasc.yaml` (library, global environment, pod template, credentials loaded by JCasC),
-  the library loaded from a local git repository (moving tag `v2` and pinned `v2.0.0`), the static agent
-  `runner-1` (runner image + JDK) standing in for the pod, and a host agent with podman standing in for the
+  to end on **Jenkins 2.580.1** by `tests/jenkins-e2e/run-e2e.sh`. 2.1.0: Jenkins set up like an admin
+  would in *Manage Jenkins* (init scripts: global library, Secret text credentials, agents, jobs), the
+  library loaded from a local git repository (moving tag `v2` and pinned `v2.1.0`), the static agent
+  `runner-1` (ci-tools-image + JDK) standing in for the pod, and a host agent with podman standing in for the
   VM. Packages came from the Internet (PyPI, Galaxy, quay.io) on this run, not from the simulated Nexus.
   Results are in §14.3.
 
 ### 14.2 Release 1.x (20-21/10/2026, airgapped)
-* Real runs in the runner image, airgapped: `lint`, `docs`, `build`, `importer`, `security-scan`, `spotter`
+* Real runs in the ci-tools-image, airgapped: `lint`, `docs`, `build`, `importer`, `security-scan`, `spotter`
   (export only); sanity on 2.16, 2.18 and 2.20 with Python 3.12; units on 2.16 and 2.18; `certification`
   (guards 0 errors, galaxy-importer 0.4.39 OK, ansible-lint 26.4.0 `production` passed).
 * EE introspection with real podman and *simulated* EEs (UBI 9 + Python 3.12 + ansible-core 2.16.19 / 2.18.19):
@@ -452,12 +457,20 @@ the airgapped runs, UID `1000680000:0`, `--cap-drop ALL`, `no-new-privileges`, c
 * Earlier releases (nox prototypes) validated the rootless podman VM in docker mode (sanity, units,
   integration, Molecule). They are only in the git history (tag `v3-nox`).
 
-### 14.3 Jenkins 2.0.0 end-to-end results (23/10/2026)
+### 14.3 Jenkins end-to-end results
+
+**2.1.0 (26/10/2026)**: Jenkins set up without any configuration file (init scripts doing the *Manage
+Jenkins* steps), plain `ansibleCollectionPipeline()` and overridden parameters.
 
 | Job | Result | What it shows |
 |---|---|---|
-| `corp-demo` (`@v2`, the example collection with units, integration and Molecule) | **SUCCESS**, 166 s | library resolved through the moving tag `v2`; 4 static checks in parallel (Lint + docs, Certification with ansible-lint `production` passed, Build + galaxy-importer, Security scan), Spotter skipped (empty `SPOTTER_ENDPOINT`), changelog skipped (not a PR); matrix 2.16 / 2.18 / 2.20 sanity + units; Integration (`--docker default`, target `hello`) and Molecule (`motd` scenario, ubuntu2404 + fedora40, idempotence) on the Podman agent; Publish skipped (not a tag); JUnit 78 tests, 1 informational MEDIUM finding of the security scanner (blocking threshold: HIGH) |
-| `corp-demo-lite` (`@v2.0.0`, same collection without `tests/unit`, `tests/integration`, `extensions/molecule`) | **SUCCESS**, 115 s | pinned version resolved; units (×3), Integration and Molecule skipped by `fileExists`; JUnit 71 tests, 0 failures |
+| `corp-demo` (`@v2`, 2-line Jenkinsfile, full example collection) | **SUCCESS**, 148 s | defaults: static checks, matrix 2.16 / 2.18 / 2.20 sanity + units, Integration and Molecule on the `ansible-builder` agent; Spotter skipped (empty default `spotterEndpoint`), changelog and Publish skipped; rendered pod: `runner` image = default `ciToolsImage`; JUnit 78 tests, 1 informational MEDIUM finding of the security scanner (blocking threshold: HIGH) |
+| `corp-demo-lite` (`@v2.1.0`, no `tests/unit`, `tests/integration`, `extensions/molecule`) | **SUCCESS**, 131 s | pinned version resolved; units (×3), Integration and Molecule skipped by `fileExists`; JUnit 71 tests, 0 failures |
+| `corp-demo-params` (`spotterEndpoint: ''`, `spotterCredentialsId`/`galaxyCredentialsId` = team IDs, `ciToolsImage: 'localhost/bench/ci-tools-image:override'`, `builderLabel: 'podman-bench'`) | **SUCCESS**, 162 s | Spotter skipped; container stages scheduled on the `podman-bench` label; rendered pod YAML = template with the overridden image (diffed and parsed) |
+| `corp-demo-spotter` (lite + `spotterEndpoint: 'https://spotter.invalid/api'`, `spotterCredentialsId: 'bench-team-spotter'`) | **UNSTABLE** (expected), 148 s | Spotter stage runs with the team credential bound to `SPOTTER_TOKEN` and the endpoint passed to `aci`; the unreachable endpoint only makes the build UNSTABLE |
+| `corp-demo-typo` (`spoterEndpoint: ...`) | **FAILURE** (expected), 2 s | "unknown parameter(s) [spoterEndpoint]. Allowed: galaxyUrl, ..." before any agent is allocated |
+
+**2.0.0 (23/10/2026)**: `corp-demo` SUCCESS (166 s) and `corp-demo-lite` SUCCESS (115 s), same stages.
 
 Bench caveat: the bench host has no systemd user session, so rootless podman had no delegated cgroup v2
 and the systemd test containers could not start (pitfall 13). The bench therefore runs the Podman agent
@@ -466,9 +479,9 @@ as root; on the real VM the playbook enables linger for the CI user instead.
 ## 15. Limits and untested points
 
 * **No OpenShift cluster and no GitLab instance** on the bench:
-  * the Jenkins pod template is loaded by JCasC but never scheduled on a cluster: on the bench, the pod is
-    replaced by a static agent with the same label (the bench copy of the library swaps
-    `kubernetes { ... }` for `label 'ansible-runner'`);
+  * the Jenkins pod is never scheduled on a cluster: on the bench it is replaced by a static agent (the
+    bench copy of the library swaps `kubernetes { ... }` for `label 'ansible-runner'`); the rendered pod
+    YAML (`libraryResource` + image substitution, in Jenkins) is archived and parsed by the bench script;
   * the component is validated by the official schema and an emulated rendering (`render.py`), without
     real CI Lint or GitLab pipeline. First thing to do: CI Lint of the component + pipeline of the
     component project; `@1` (partial version) and catalog publication are not tested.
@@ -590,7 +603,7 @@ as root; on the real VM the playbook enables linger for the CI user instead.
 
 * **Network flows**: CI agent → private Spotter instance, **HTTPS 443 only** (checked: with a private
   endpoint the CLI only calls that host).
-* Pipelines: Jenkins credential `spotter-api-token` + global `SPOTTER_ENDPOINT` (findings make the build
+* Pipelines: Jenkins parameters `spotterEndpoint` + `spotterCredentialsId` (default credential `spotter-api-token`; findings make the build
   UNSTABLE); GitLab masked variable `SPOTTER_TOKEN`, `spotter-allow-failure: true` by default.
 * Confidentiality: the payload contains the tasks **and their values** (`--exclude-values`,
   `--exclude-metadata`, `--exclude-environment` reduce it; detected secrets are masked).
@@ -624,8 +637,8 @@ as root; on the real VM the playbook enables linger for the CI user instead.
   and component) are the **native** reuse mechanism of each tool.
 * The business logic exists **once**, in bash (`aci`), testable with shellcheck and smoke tests. Only a few
   small Python helpers are called.
-* A fixed Jenkins pipeline (2.0.0) removes the parameter layer entirely: nothing to validate, nothing to
-  document per team, the same behaviour everywhere. Site differences are admin settings (JCasC).
+* A fixed Jenkins pipeline (2.x) keeps only ten site parameters with defaults (Nexus, Spotter, image, label,
+  credential IDs): nothing behavioural to document per team, the same stages everywhere.
 * An earlier prototype used nox (one `noxfile.py` per repository); it was dropped because every fix had to
   be copied into N repositories and the teams do not know nox. It is in the git history (tag `v3-nox`).
 

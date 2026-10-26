@@ -1,0 +1,43 @@
+# Pod of every ansible-ci stage that needs no container engine (OpenShift SCC restricted-v2).
+# @@CI_TOOLS_IMAGE@@ is replaced by the pipeline with the `ciToolsImage` parameter.
+# No runAsUser/runAsGroup/fsGroup: OpenShift assigns an arbitrary UID from the namespace range with GID 0;
+# the ci-tools-image makes HOME (/home/ci) group-0 writable (chmod g=u) and /opt/ansible-ci world-readable.
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    app.kubernetes.io/part-of: ansible-collection-ci
+spec:
+  securityContext:
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: jnlp                       # image and args come from the Kubernetes cloud settings
+      resources:
+        requests: {cpu: 100m, memory: 256Mi}
+        limits: {memory: 512Mi}
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ["ALL"]
+    - name: runner
+      image: "@@CI_TOOLS_IMAGE@@"
+      imagePullPolicy: IfNotPresent
+      command: ["sleep"]
+      args: ["infinity"]
+      env:
+        - {name: HOME, value: /home/ci}
+        - {name: TMPDIR, value: /tmp}
+        - {name: LANG, value: C.UTF-8}
+      resources:
+        requests: {cpu: "1", memory: 2Gi}
+        limits: {cpu: "4", memory: 6Gi}
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ["ALL"]
+      volumeMounts:
+        - {name: tmp, mountPath: /tmp}
+  volumes:
+    - {name: tmp, emptyDir: {}}

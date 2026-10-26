@@ -36,7 +36,7 @@
     builder_pip_index: https://nexus.corp.local/repository/pypi-group/simple
     builder_venv: /opt/ansible-ci
     builder_pyyaml_version: "6.0.3"
-    # aci scripts: SAME version as the runner image.
+    # aci scripts: SAME version as the ci-tools-image.
     # Path on the Ansible controller (checkout of the matching tag of the ansible-collection-ci repository).
     builder_aci_src: "{{ playbook_dir }}/../../ci-scripts"
   tasks:
@@ -98,7 +98,7 @@
         virtualenv: "{{ builder_venv }}"
         virtualenv_command: "{{ builder_python }} -m venv"
 
-    - name: Install the aci scripts like in the runner image (/opt/ansible-ci)
+    - name: Install the aci scripts like in the ci-tools-image (/opt/ansible-ci)
       ansible.builtin.copy:
         src: "{{ builder_aci_src }}/{{ item }}"
         dest: "{{ builder_venv }}/{{ item | dirname }}/"

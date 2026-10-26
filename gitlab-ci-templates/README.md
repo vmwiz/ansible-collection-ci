@@ -1,7 +1,7 @@
 # GitLab CI/CD component `ansible-collection` (ansible-ci 1.x)
 
 Test and validation pipeline for an Ansible collection on GitLab, airgapped behind Nexus and aligned
-with AAP 2.6. It runs **the same `aci` scripts** (`../ci-scripts`, baked into the runner image) as the
+with AAP 2.6. It runs **the same `aci` scripts** (`../ci-scripts`, baked into the ci-tools-image) as the
 Jenkins shared library (`../jenkins-shared-library`). Note: the Jenkins library is a single fixed
 pipeline without parameters, while this component still exposes the inputs listed below.
 
@@ -47,14 +47,14 @@ A GitLab component can only ship YAML, so the scripts have to arrive another way
 
 | Option | Pros | Cons |
 |---|---|---|
-| **A. Baked into the runner image** (`/opt/ansible-ci`) and installed on the VM (`infra/ansible-builder-vm`) | No network access in jobs; version pinned by the image tag; same files as Jenkins; tested | Changing the scripts requires a new image |
+| **A. Baked into the ci-tools-image** (`/opt/ansible-ci`) and installed on the VM (`infra/ansible-builder-vm`) | No network access in jobs; version pinned by the image tag; same files as Jenkins; tested | Changing the scripts requires a new image |
 | B. Job that clones the scripts project (`CI_JOB_TOKEN`) | Scripts decoupled from the image | Project access to allow (job token allowlist); one clone per job; two versions to keep aligned |
 | C. Scripts inline in the YAML (`!reference`) | Everything in the component | Duplicated bash, cannot be shellchecked; size limits; drifts from Jenkins |
 
 **Recommendation: A.**
 * The component sets `ACI_EXPECTED_VERSION`. `aci` **refuses** an image whose major version differs
   and **reports** a minor version drift.
-* Publish the runner image with **two tags**: the calendar tag (`2026.10`) and the scripts version tag
+* Publish the ci-tools-image with **two tags**: the calendar tag (`2026.10`) and the scripts version tag
   (`aci-1.1.0`).
 * For every component release, update the default `runner-image` in the same commit.
   `tests/validate.sh` checks consistency with `ci-scripts/VERSION`.
@@ -86,10 +86,10 @@ exists. A failing series listed in `ansible-core-prerelease` exits with code 3
 | `stage-static` | string | `'build'` | Stage of the static checks (lint, docs, build, certification, security...). |
 | `stage-test` | string | `'test'` | Stage of ansible-test (sanity, units, integration) and molecule. |
 | `stage-publish` | string | `'deploy'` | Publication stage (on tags). |
-| `runner-image` | string | `'nexus.corp.local:8443/ci/ansible-collection-runner:2026.10'` | Runner image (contains /opt/ansible-ci/bin/aci and Python 3.12). Its tag pins the scripts. |
+| `runner-image` | string | `'nexus.corp.local:8443/corp/ci-tools-image:2026.10'` | ci-tools-image (contains /opt/ansible-ci/bin/aci and Python 3.12). Its tag pins the scripts. |
 | `runner-tags` | array | `['ansible-runner']` | Tags of the Kubernetes/OpenShift runner (restricted-v2 pods, no container engine). |
 | `builder-tags` | array | `['ansible-builder']` | Tags of the shell runner on the ansible-builder VM (podman) - docker mode, integration, molecule, EE. |
-| `aci-path` | string | `'/opt/ansible-ci/bin/aci'` | Path of the aci scripts in the runner image and on the ansible-builder VM. |
+| `aci-path` | string | `'/opt/ansible-ci/bin/aci'` | Path of the aci scripts in the ci-tools-image and on the ansible-builder VM. |
 | `ansible-core-versions` | array | `['2.16', '2.18']` | Tested series, quoted. With target-ees, must list exactly the series of the EEs. |
 | `ansible-core-optional` | string | `''` | Extra non-blocking series, space separated (e.g. "2.20" for AAP 2.7). |
 | `ansible-core-prerelease` | string | `''` | Series of ansible-core-versions that are pre-releases (rc), non-blocking failure (code 3). |
@@ -152,7 +152,7 @@ Define them as **masked** CI/CD variables:
   * simulation of the jobs created in each context (branch, default branch, MR, tag);
   * validation of the examples.
 * `../tests/gitlab-jobs/run-jobs.sh INPUTS CONTEXT "jobs..."` (bench, not shipped): **really** runs the
-  scripts of the rendered jobs. Each job runs in a fresh clone, in the runner image, airgapped, with an
+  scripts of the rendered jobs. Each job runs in a fresh clone, in the ci-tools-image, airgapped, with an
   arbitrary UID; the introspection runs on the host with podman.
 * `render.py` is only an **emulation**. The final validation happens in GitLab: CI Lint
   (`/-/ci/lint`, or the `POST /projects/:id/ci/lint` API) and the component project pipeline

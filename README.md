@@ -1,6 +1,6 @@
 # ansible-ci: CI libraries for Ansible collections (Jenkins + GitLab, airgapped/Nexus, AAP 2.6)
 
-Jenkins library **2.0.0**, `aci` scripts and GitLab component **1.1.0**. A collection has no CI code,
+Jenkins library **2.1.0**, `aci` scripts and GitLab component **1.1.0**. A collection has no CI code,
 only two or three lines:
 
 ```groovy
@@ -18,11 +18,11 @@ include:
 | [USER-GUIDE.md](USER-GUIDE.md) | For the collection teams: `Jenkinsfile` and `.gitlab-ci.yml` to copy, what each stage checks |
 | [ANALYSIS.md](ANALYSIS.md) | Study of the CI of 23 `ansible-collections/*` collections |
 | `ci-scripts/` | **Single source** of the bash CLI `aci` (`bin/aci`, `lib/aci/cmd/*.sh`, Python helpers, `share/aci/`: pinned versions, `python-map.txt`, `certification.env`) + `tests/` (smoke, guards) |
-| `jenkins-shared-library/` | One fixed declarative pipeline, `vars/ansibleCollectionPipeline.groovy` (no parameters), `CHANGELOG.md` |
+| `jenkins-shared-library/` | One fixed declarative pipeline, `vars/ansibleCollectionPipeline.groovy` (site parameters with defaults), pod template `resources/ansible-ci/pod.yaml`, `CHANGELOG.md` |
 | `gitlab-ci-templates/` | CI/CD component `ansible-collection` (`templates/ansible-collection/template.yml`, 46 inputs), examples, `tests/` (emulated rendering + GitLab schema, test collection for the component project pipeline), `CHANGELOG.md` |
 | `tools/sync.sh` | Refreshes the copy of `corp.demo` used by the component tests; `--check` fails if it differs |
-| `infra/jenkins/` | `jcasc.yaml`: library declaration, global environment (Nexus, Spotter), pod template `ansible-runner`, credentials |
-| `infra/runner-image/` | Runner image UBI 9 + python3.12 + `aci` in `/opt/ansible-ci` (build context = repository root) |
+| `infra/jenkins/` | Admin setup in *Manage Jenkins*: global library, credentials, Kubernetes cloud, `ansible-builder` agents |
+| `infra/ci-tools-image/` | ci-tools-image UBI 9 + python3.12 + `aci` in `/opt/ansible-ci` (build context = repository root) |
 | `infra/ansible-builder-vm/` | Playbook of the podman VM (Jenkins agent / GitLab shell runner); installs `aci` and the `registries.conf` mirrors |
 | `infra/gitlab-runner/`, `infra/openshift/` | GitLab runners, OpenShift options (nested podman POC) |
 | `example-collection/corp.demo/` | Demo collection (Jenkinsfile + .gitlab-ci.yml) |
@@ -37,15 +37,15 @@ shellcheck -x ci-scripts/bin/aci ci-scripts/lib/aci/*.sh ci-scripts/lib/aci/cmd/
 # 2. GitLab component
 tools/sync.sh --check                            # test collection up to date
 gitlab-ci-templates/tests/validate.sh            # rendering + official schema + jobs per context
-# 3. Bench (not shipped, tests/README.md): real Jenkins with jcasc.yaml + rendered GitLab jobs
+# 3. Bench (not shipped, tests/README.md): real Jenkins + rendered GitLab jobs
 tests/jenkins-e2e/run-e2e.sh
 tests/gitlab-jobs/run-jobs.sh tests/gitlab-jobs/inputs/bench.yml branch "aci-lint aci-certification"
-# 4. Runner image (its tag is the aci version used by Jenkins and GitLab)
-podman build -f infra/runner-image/Dockerfile --build-arg BASE_IMAGE=<registry>/corp/ubi9-corp:9.8 \
-  -t nexus.corp.local:8443/ci/ansible-collection-runner:2026.10 .
+# 4. ci-tools-image (its tag is the aci version used by Jenkins and GitLab)
+podman build -f infra/ci-tools-image/Containerfile --build-arg BASE_IMAGE=<registry>/corp/ubi9-corp:9.8 \
+  -t nexus.corp.local:8443/corp/ci-tools-image:2026.10 .
 ```
 
-## `aci` locally (runner image or VM)
+## `aci` locally (ci-tools-image or VM)
 
 ```bash
 cd my.collection
@@ -67,6 +67,6 @@ ACI_CORE=2.18 /opt/ansible-ci/bin/aci sanity          # venv by default; ACI_TES
 | `ACI_CACHE`, `ACI_WORK`, `ACI_REPORTS` | Venv cache, work tree (outside the git repository), reports |
 
 The placeholders to adapt are `nexus.corp.local:844x`, `hub.corp.local`, `spotter.corp.local`,
-`gitlab.corp.local` and the `BASE_IMAGE` of the runner image.
+`gitlab.corp.local` and the `BASE_IMAGE` of the ci-tools-image.
 
 An earlier nox-based prototype is no longer shipped; it is in the git history (tag `v3-nox`).

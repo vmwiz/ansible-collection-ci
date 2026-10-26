@@ -7,6 +7,20 @@ Jenkinsfiles use `@Library('ansible-ci@v2')` (fixes and compatible changes autom
 * minor: compatible change (e.g. a stage that only runs when the repository opts in);
 * major: behaviour change (matrix, new blocking stage, removed stage).
 
+## v2.1.0 - 2026-10-26
+
+* The Configuration as Code file is removed: the admin setup is done in
+  *Manage Jenkins* (library, credentials, Kubernetes cloud, `ansible-builder` agents), see `infra/jenkins/README.md`.
+* `ansibleCollectionPipeline(Map config = [:])`: site settings become parameters with defaults, defined in one
+  `DEFAULTS` map at the top of the file: `galaxyUrl`, `galaxyPublishUrl`, `pypiEndpoint`, `imageMirror`,
+  `spotterEndpoint` (empty = Spotter skipped), `spotterCacert`, `ciToolsImage`, `builderLabel`,
+  `spotterCredentialsId`, `galaxyCredentialsId` (Jenkins credential IDs). Unknown keys stop the build.
+  Stages, matrix and behaviour are unchanged; `ansibleCollectionPipeline()` without arguments still works.
+* The pod template ships with the library (`resources/ansible-ci/pod.yaml`, `restricted-v2`); its runner
+  image is the `ciToolsImage` parameter. The Kubernetes cloud no longer needs an `ansible-runner` template.
+* The runner image is renamed **ci-tools-image** (`infra/ci-tools-image/Containerfile`,
+  `nexus.corp.local:8443/corp/ci-tools-image:2026.10`).
+
 ## v2.0.0 - 2026-10-23
 
 Breaking: the library is now **one fixed declarative pipeline**, the same for every collection.
@@ -19,7 +33,7 @@ Breaking: the library is now **one fixed declarative pipeline**, the same for ev
   (`tests/integration/targets/`), Molecule (`extensions/molecule/`); Spotter when the admins set
   `SPOTTER_ENDPOINT`; changelog check on pull requests; publication on tags.
 * Site settings (Nexus URLs, Spotter, runner image, pod template, credentials, library version) moved to
-  `infra/jenkins/jcasc.yaml`.
+  a Jenkins Configuration as Code file (removed again in 2.1.0).
 * The `aci` scripts are no longer bundled: the pipeline calls `/opt/ansible-ci/bin/aci` from the runner
   image / VM (`aci` 1.1.0).
 * Removed: all granular steps (`withAnsibleCi`, `withAnsibleCore`, `ansibleLint`, `ansibleTestSanity`, ...,

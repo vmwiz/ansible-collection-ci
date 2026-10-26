@@ -11,7 +11,7 @@ workflow:            # a single pipeline per MR (avoids the branch + MR duplicat
 include:
   - component: $CI_SERVER_FQDN/ci/ansible-collection-ci/ansible-collection@1.0.0
     inputs:
-      runner-image: nexus.corp.local:8443/ci/ansible-collection-runner:2026.10
+      runner-image: nexus.corp.local:8443/corp/ci-tools-image:2026.10
       # Matrix: either series...
       ansible-core-versions: ['2.16', '2.18']
       ansible-core-optional: '2.20'            # AAP 2.7 readiness, non-blocking

@@ -1,57 +1,69 @@
-# Jenkins: `ansible-ci` shared library, agents and site settings
+# Jenkins: admin setup for the `ansible-ci` shared library
 
-Everything an admin needs is in [`jcasc.yaml`](jcasc.yaml) (Jenkins Configuration as Code). The pipeline
-itself takes **no parameters**: every collection runs the same stages, and all site-specific values
-live here.
+Everything is done once, in the Jenkins UI (**Manage Jenkins**); no extra plugin or file is needed. Site
+values (Nexus URLs, Spotter, ci-tools-image, agent label, credential IDs) are **pipeline parameters with
+defaults**, defined at the top of `jenkins-shared-library/vars/ansibleCollectionPipeline.groovy`: set the
+defaults there once for your site, teams override them only when needed.
 
-## 1. Library
+## 1. Plugins
 
-`unclassified.globalLibraries` declares the **global** library `ansible-ci` (trusted code, runs outside
-the sandbox; only CI maintainers can write to its repository), default version `v2`.
+Pipeline (`workflow-aggregator`), Pipeline: Declarative (`pipeline-model-definition`), Pipeline: Groovy
+Libraries (`pipeline-groovy-lib`), Git, Kubernetes, Credentials Binding, Plain Credentials, JUnit,
+Timestamper, AnsiColor.
 
-* `v2` = moving tag on the latest 2.x release (moved at every release); `v2.0.0`... = immutable tags.
-* Collections use `@Library('ansible-ci@v2') _` (fixes arrive automatically) or pin `@Library('ansible-ci@v2.0.0')`.
-* `gitTagDiscovery` is required so that tags can be used as library versions.
+## 2. Global Pipeline Library
 
-## 2. Global environment (read by `aci`)
+*Manage Jenkins > System > Global Trusted Pipeline Libraries > Add*:
 
-| Variable | Role |
+| Field | Value |
 |---|---|
-| `ACI_GALAXY_URL` | Nexus Galaxy group (proxy of galaxy.ansible.com / Automation Hub) used to install collection dependencies |
-| `ACI_GALAXY_PUBLISH_URL` | Nexus Galaxy hosted repository, target of the `Publish` stage (tag builds) |
-| `ACI_PYPI_ENDPOINT` | PyPI index used inside ansible-test containers (ansible-builder VM) |
-| `ACI_IMAGE_MIRROR` | Nexus Docker proxy of quay.io (ansible-test and Molecule images) |
-| `SPOTTER_ENDPOINT` | Private Spotter API. **Empty = the Spotter stage is skipped** |
-| `SPOTTER_CACERT` | CA bundle for the Spotter API |
+| Name | `ansible-ci` |
+| Default version | `v2` (moving tag = latest 2.x) |
+| Allow default version to be overridden | checked (lets a team pin `@Library('ansible-ci@v2.1.0')`) |
+| Include @Library changes in job recent changes | as you like |
+| Retrieval method | Modern SCM > Git, repository of the library (e.g. `https://gitlab.corp.local/ci/ansible-ci-jenkins.git`) with a read-only credential |
+| Behaviours | *Discover branches* **and** *Discover tags* (tags are used as versions) |
 
-pip itself needs nothing here: the runner image and the VM have `/etc/pip.conf` pointing to Nexus.
+A *global* library is trusted code (it runs outside the Groovy sandbox): only CI maintainers may write to
+its repository.
 
-## 3. Agents
+## 3. Credentials
 
-| Agent | Defined in | Used for |
+*Manage Jenkins > Credentials > System > Global credentials > Add Credentials*, kind **Secret text**:
+
+| ID (default parameter value) | Secret | Parameter |
 |---|---|---|
-| Pod template `ansible-runner` (OpenShift, SCC `restricted-v2`) | `jcasc.yaml`, `clouds.kubernetes.templates` | Static checks, certification, build, security scan, Spotter, changelog, sanity/units matrix (`venv` mode), publish |
-| Permanent agents labelled `ansible-builder` (Podman VM) | Jenkins nodes (SSH or inbound), prepared by `../ansible-builder-vm/site.yml` | Integration (`ansible-test --docker`) and Molecule |
+| `spotter-api-token` | API token of the private Spotter instance | `spotterCredentialsId` |
+| `nexus-galaxy-hosted-token` | Nexus token allowed to publish to the Galaxy hosted repository | `galaxyCredentialsId` |
 
-* The pipeline selects the pod with `kubernetes { inheritFrom 'ansible-runner'; defaultContainer 'runner' }`.
-  The `runner` container image tag (`nexus.corp.local:8443/ci/ansible-collection-runner:2026.10`) decides
-  which `aci` version every build uses: bump it to roll out a new runner image.
-* VM: one executor per parallel container stage (each `ansible-test --docker` run starts 2-3 containers).
-  If a real `docker` binary is installed next to podman, set `ANSIBLE_TEST_PREFER_PODMAN=1` on the node.
+The pipeline only receives credential **IDs**; the secret values never appear in a Jenkinsfile. A team
+with its own token creates another Secret text credential (folder-level credentials work too) and passes
+its ID, e.g. `spotterCredentialsId: 'my-team-spotter'`.
 
-## 4. Plugins and credentials
+## 4. Kubernetes cloud (OpenShift)
 
-* Plugins: configuration-as-code, workflow-aggregator (Pipeline), pipeline-model-definition,
-  pipeline-groovy-lib, git, kubernetes, junit, credentials-binding, plain-credentials, ansicolor, timestamper.
-* Credentials (Secret text): `spotter-api-token` (private Spotter), `nexus-galaxy-hosted-token`
-  (publication to `ACI_GALAXY_PUBLISH_URL`). Values come from `${SPOTTER_API_TOKEN}` / `${NEXUS_GALAXY_TOKEN}`
-  (e.g. a Kubernetes Secret mounted into the controller).
-* The changelog fragment check runs on pull requests of **multibranch** jobs (`changeRequest()`), and
-  `Publish` on tag builds (`buildingTag()`, multibranch with tag discovery).
+*Manage Jenkins > Clouds > New cloud > Kubernetes*: the OpenShift API URL, the agents namespace, a
+service account credential, the Jenkins URL and tunnel reachable from the pods. **No pod template is
+needed**: the library ships its own (`resources/ansible-ci/pod.yaml`, SCC `restricted-v2`) and puts the
+`ciToolsImage` parameter into it. The `jnlp` container keeps the image configured in the cloud (point it to
+your Nexus mirror of `jenkins/inbound-agent`). If several Kubernetes clouds exist, the pipeline uses the
+default one (the first).
 
-## 5. Validation
+## 5. ansible-builder agents (Podman VM)
 
-`../../tests/jenkins-e2e/run-e2e.sh` (bench, not shipped) starts Jenkins 2.580.1 with this very
-`jcasc.yaml`, loads the library from a local git repository and runs the example collection. The
-Kubernetes pod template is checked by JCasC at load time, but no build ran on a real cluster (the bench
-uses a static agent labelled `ansible-runner` instead).
+Prepare the VMs with `../ansible-builder-vm/site.yml`, then *Manage Jenkins > Nodes > New node*
+(permanent agent, SSH or inbound), label **`ansible-builder`** (parameter `builderLabel`), one executor
+per parallel container stage (each `ansible-test --docker` run starts 2-3 containers). If a real `docker`
+binary is installed next to podman, set `ANSIBLE_TEST_PREFER_PODMAN=1` in the node environment.
+
+## 6. Jobs
+
+One **Multibranch Pipeline** per collection (branch + pull request + tag discovery): the changelog check runs
+on pull requests (`changeRequest()`), `Publish` on tag builds (`buildingTag()`).
+
+## 7. Validation
+
+`../../tests/jenkins-e2e/run-e2e.sh` (bench, not shipped) starts Jenkins 2.580.1, applies this setup with
+init scripts (`tests/jenkins-e2e/init.groovy.d/`), loads the library from a local git repository and runs
+the example collection with default and overridden parameters. The bench has no Kubernetes cluster: the
+OpenShift pod is replaced by a static agent, and the rendered pod YAML is checked separately.

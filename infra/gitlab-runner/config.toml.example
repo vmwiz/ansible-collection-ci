@@ -18,7 +18,7 @@ concurrent = 20
   # token = "..."   (gitlab-runner register / operator)
   [runners.kubernetes]
     namespace = "ci-ansible"
-    image = "nexus.corp.local:8443/ci/ansible-collection-runner:2026.10"
+    image = "nexus.corp.local:8443/corp/ci-tools-image:2026.10"
     # Helper that supports arbitrary UIDs (GitLab UBI "ocp" images), served by the Nexus proxy
     # of registry.gitlab.com (port 8446) - align the tag with the runner version.
     helper_image = "nexus.corp.local:8446/gitlab-org/ci-cd/gitlab-runner-ubi-images/gitlab-runner-helper-ocp:<runner-version>"

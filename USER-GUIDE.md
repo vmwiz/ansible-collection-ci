@@ -40,12 +40,11 @@ and for tag builds (publication).
 ansibleCollectionPipeline()
 ```
 
-That is the whole file, and it is the same for every collection: the pipeline is fixed and takes no
-parameters. It runs:
+That is the whole file for most collections: the stages are the same for everybody. It runs:
 
 | Stage | What | Where |
 |---|---|---|
-| Static checks (parallel) | Lint (yamllint, antsibull-changelog lint, ansible-lint) + docs, Red Hat certification checks, build + galaxy-importer, ansible-security-scanner, Spotter (when the admins configured it), changelog fragment (pull requests only) | OpenShift pod |
+| Static checks (parallel) | Lint (yamllint, antsibull-changelog lint, ansible-lint) + docs, Red Hat certification checks, build + galaxy-importer, ansible-security-scanner, Spotter (when `spotterEndpoint` is set), changelog fragment (pull requests only) | OpenShift pod |
 | ansible-test | sanity + units on ansible-core **2.16, 2.18 and 2.20**, Python 3.12 (units only if `tests/unit/` exists) | OpenShift pod |
 | Container tests (parallel) | `ansible-test integration --docker` (if `tests/integration/targets/` exists), Molecule (if `extensions/molecule/` exists) | ansible-builder VM (Podman) |
 | Publish | publication to Nexus, on a tag equal to the `galaxy.yml` version | OpenShift pod |
@@ -53,16 +52,42 @@ parameters. It runs:
 2.16 and 2.18 are the ansible-core versions of AAP 2.6; 2.20 (AAP 2.7) is also part of the Red Hat
 certification sanity, so it is tested too.
 
-Optional stages are switched on and off by the content of your repository, not by parameters: add
+Optional stages are switched on and off by the content of your repository: add
 `tests/integration/targets/` or `extensions/molecule/` and the matching stage runs.
 
-To pin a release instead of following the latest 2.x: `@Library('ansible-ci@v2.0.0') _`.
+To pin a release instead of following the latest 2.x: `@Library('ansible-ci@v2.1.0') _`.
 
-### 2.2 What the Jenkins admins set up (not your job)
+### 2.2 Overriding site settings (rarely needed)
 
-Nexus URLs, the Spotter endpoint, the runner image, the agents and the credentials
-(`spotter-api-token`, `nexus-galaxy-hosted-token`) are configured once for everybody in
-`infra/jenkins/jcasc.yaml`.
+The site defaults (Nexus URLs, Spotter, ci-tools-image, agent label, credential IDs) are set by the CI
+maintainers. You can override any of them, for example to use your team's private Spotter instance:
+
+```groovy
+@Library('ansible-ci@v2') _
+ansibleCollectionPipeline(spotterEndpoint: 'https://spotter.corp.local/api', spotterCredentialsId: 'my-team-spotter')
+```
+
+| Parameter | Default | Purpose |
+|---|---|---|
+| `galaxyUrl` | `https://nexus.corp.local/repository/ansible-group/` | Galaxy group for collection dependencies |
+| `galaxyPublishUrl` | `https://nexus.corp.local/repository/ansible-hosted/` | Galaxy repository the `Publish` stage pushes to |
+| `pypiEndpoint` | `https://nexus.corp.local/repository/pypi-group/simple` | PyPI index used inside the ansible-test containers |
+| `imageMirror` | `nexus.corp.local:8444` | Docker proxy of quay.io (ansible-test and Molecule images) |
+| `spotterEndpoint` | empty | Private Spotter API; empty = Spotter stage skipped |
+| `spotterCacert` | `/etc/pki/tls/certs/ca-bundle.crt` | CA bundle for the Spotter API |
+| `ciToolsImage` | `nexus.corp.local:8443/corp/ci-tools-image:2026.10` | Image the pod stages run in (it pins the `aci` version) |
+| `builderLabel` | `ansible-builder` | Label of the Podman agents (Integration, Molecule) |
+| `spotterCredentialsId` | `spotter-api-token` | ID of the Jenkins *Secret text* credential with the Spotter token |
+| `galaxyCredentialsId` | `nexus-galaxy-hosted-token` | ID of the Jenkins *Secret text* credential allowed to publish |
+
+Credentials are passed by **ID**: ask a Jenkins admin (or a folder admin) to create a *Secret text*
+credential and use its ID; never put a secret in the Jenkinsfile. A misspelt parameter name stops the build
+immediately with the list of valid names.
+
+### 2.3 What the Jenkins admins set up (not your job)
+
+The global library `ansible-ci`, the default credentials, the Kubernetes cloud and the `ansible-builder`
+agents: see `infra/jenkins/README.md`.
 
 ## 3. GitLab
 
@@ -92,7 +117,7 @@ workflow:            # a single pipeline per MR
 include:
   - component: $CI_SERVER_FQDN/ci/ansible-collection-ci/ansible-collection@1.1.0
     inputs:
-      runner-image: nexus.corp.local:8443/ci/ansible-collection-runner:2026.10
+      runner-image: nexus.corp.local:8443/corp/ci-tools-image:2026.10
       ansible-core-versions: ['2.16', '2.18']       # quoted
       ansible-core-optional: '2.20'                 # AAP 2.7, non-blocking
       # target-ees: >-                              # matrix checked against the EEs (same series required)
@@ -126,7 +151,7 @@ include:
 | Sanity / units / integration | ansible-test | JUnit in the *Tests* tab |
 | Publish | the tag differs from the `galaxy.yml` version | tag `1.2.3` (or `v1.2.3`) = `version: 1.2.3` |
 
-Locally, in the runner image: `ACI_CORE=2.18 /opt/ansible-ci/bin/aci sanity` (or `lint`,
+Locally, in the ci-tools-image: `ACI_CORE=2.18 /opt/ansible-ci/bin/aci sanity` (or `lint`,
 `certification`...).
 
 ## 5. Versions

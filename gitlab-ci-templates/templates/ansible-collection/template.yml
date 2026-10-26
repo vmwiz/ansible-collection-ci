@@ -1,6 +1,6 @@
 # GitLab CI/CD component "ansible-collection" - ansible-ci 1.1.0
 # Test/validation pipeline for an Ansible collection (airgapped, Nexus, AAP 2.6), running the same `aci`
-# scripts (installed in the runner image under /opt/ansible-ci) as the Jenkins shared library.
+# scripts (installed in the ci-tools-image under /opt/ansible-ci) as the Jenkins shared library.
 # GitLab >= 17.0 (components and inputs GA). Usage: see README.md / USER-GUIDE.md.
 #   include:
 #     - component: $CI_SERVER_FQDN/ci/ansible-collection-ci/ansible-collection@1
@@ -20,8 +20,8 @@ spec:
       description: Publication stage (on tags).
     # ---- images and runners ----
     runner-image:
-      default: nexus.corp.local:8443/ci/ansible-collection-runner:2026.10
-      description: Runner image (contains /opt/ansible-ci/bin/aci and Python 3.12). Its tag pins the scripts.
+      default: nexus.corp.local:8443/corp/ci-tools-image:2026.10
+      description: ci-tools-image (contains /opt/ansible-ci/bin/aci and Python 3.12). Its tag pins the scripts.
     runner-tags:
       type: array
       default: [ansible-runner]
@@ -32,7 +32,7 @@ spec:
       description: Tags of the shell runner on the ansible-builder VM (podman) - docker mode, integration, molecule, EE.
     aci-path:
       default: /opt/ansible-ci/bin/aci
-      description: Path of the aci scripts in the runner image and on the ansible-builder VM.
+      description: Path of the aci scripts in the ci-tools-image and on the ansible-builder VM.
     # ---- ansible-core matrix (AAP 2.6 = 2.16 + 2.18, EE Python 3.12) ----
     ansible-core-versions:
       type: array

@@ -24,7 +24,7 @@ Points checked during validation (podman 5.4, rootless, cgroup v2):
   (empty by default): add `python3.14` only for 2.22 / `milestone` / `devel` (RHEL 9.8 AppStream has no 3.13).
 * `templates/registries-nexus.conf`: podman mirrors (quay.io, docker.io, ghcr.io) to Nexus, installed in
   `/etc/containers/registries.conf.d/`.
-* `aci` scripts: copied from `ci-scripts/` (same version as the runner image) to `/opt/ansible-ci`
+* `aci` scripts: copied from `ci-scripts/` (same version as the ci-tools-image) to `/opt/ansible-ci`
   (`/opt/ansible-ci/bin/aci`, the path called by the Jenkins pipeline and the GitLab component).
   Run the playbook from a checkout of the matching tag of this repository.
 * EE introspection (GitLab `target-ees`): the VM must be able to pull the EE images from the Nexus mirror

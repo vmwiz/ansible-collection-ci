@@ -14,7 +14,7 @@ SemVer releases, tags `x.y.z` (format required by the CI/CD catalog), aligned wi
 ## 1.0.1 - 2026-10-21
 
 * Fix: default `molecule-images` `ubuntu2404 fedora40` (valid aliases in ansible-core 2.18).
-* `ACI_EXPECTED_VERSION` 1.0.1; runner image: Python 3.12 only (326 MB), python3.14 optional.
+* `ACI_EXPECTED_VERSION` 1.0.1; ci-tools-image: Python 3.12 only (326 MB), python3.14 optional.
 * Component `tests/` reduced to validation (render + schema) and the test collection (copy kept in sync
   by `tools/sync.sh`); running the jobs on the bench lives in `tests/gitlab-jobs/` of the source repository.
 

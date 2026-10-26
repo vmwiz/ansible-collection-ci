@@ -1,4 +1,4 @@
-# /opt/ansible-ci venv of the runner image (pinned versions, from the Nexus PyPI proxy). Checked 2026-10-20.
+# /opt/ansible-ci venv of the ci-tools-image (pinned versions, from the Nexus PyPI proxy). Checked 2026-10-20.
 # The rest of the tooling (ansible-core, ansible-lint...) is installed by `aci` in cached venvs,
 # with ci-scripts/share/aci/constraints.txt.
 # PyYAML: galaxy.yml is read by the aci scripts (lib/aci/py/galaxy_meta.py) before any venv exists.

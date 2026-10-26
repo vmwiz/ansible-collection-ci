@@ -34,6 +34,7 @@ export ACI_CACHE=${ACI_CACHE:-$tmp/cache}
 if CHANGE_ID=1 CHANGE_TARGET=main ACI_SRC=$PWD "$aci" changelog-check >/dev/null 2>&1; then ko "PR without fragment accepted"; else ok "PR without fragment refused"; fi
 if CHANGE_ID=1 CHANGE_TARGET=main CHANGE_TITLE="fix [skip-changelog]" ACI_SRC=$PWD "$aci" changelog-check >/dev/null 2>&1; then ok "skip-changelog exemption"; else ko "exemption"; fi
 if ACI_SRC=$PWD "$aci" changelog-check >/dev/null 2>&1; then ok "outside a PR: skipped"; else ko "outside a PR"; fi
+mkdir -p changelogs/fragments  # empty directory: not tracked by git
 printf 'minor_changes:\n  - hello - message.\n' > changelogs/fragments/1-hello.yml
 git add -A && git -c user.name=t -c user.email=t@t commit -qm frag
 if CI_MERGE_REQUEST_IID=1 CI_MERGE_REQUEST_TARGET_BRANCH_NAME=main ACI_SRC=$PWD "$aci" changelog-check >/dev/null 2>&1; then ok "MR with fragment (+ antsibull-changelog lint)"; else ko "MR with fragment"; fi

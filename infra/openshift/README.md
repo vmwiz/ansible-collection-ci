@@ -2,7 +2,7 @@
 
 | File | Usage |
 |---|---|
-| `../jenkins/jcasc.yaml` (pod template `ansible-runner`) | Jenkins agent pod, SCC `restricted-v2` (no fixed UID, non-root, `drop: ALL`, no privilege escalation, seccomp `RuntimeDefault`) |
+| `../../jenkins-shared-library/resources/ansible-ci/pod.yaml` (pod of the Jenkins pipeline, image = `ciToolsImage`) | Jenkins agent pod, SCC `restricted-v2` (no fixed UID, non-root, `drop: ALL`, no privilege escalation, seccomp `RuntimeDefault`) |
 | `nested-podman-pod.poc.yaml` | **POC** nested podman (OCP >= 4.20, SCC `nested-container`) - not validated |
 
 ## What runs in a restricted pod (no container engine)
@@ -16,7 +16,7 @@ Airgap prerequisites specific to venv mode:
   `lib/aci/py/get_pip_offline.py` there (`ensurepip` + pip at the requested version from Nexus). No raw
   repository needed;
 * ansible-test --venv does not pass `PIP_INDEX_URL` to its venvs: the `/etc/pip.conf` of the base image
-  (corporate UBI 9, see `infra/runner-image/README.md`) points to Nexus.
+  (corporate UBI 9, see `infra/ci-tools-image/README.md`) points to Nexus.
 * Validated with the UBI 9 image: UID 1000680000:0, `--cap-drop ALL`, network cut except the fake Nexus.
 
 ## What CANNOT run in a restricted pod

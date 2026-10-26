@@ -1,17 +1,18 @@
-# Runner image (OpenShift pods, Jenkins and GitLab)
+# ci-tools-image (OpenShift pods, Jenkins and GitLab)
 
 Built **on the corporate UBI 9 base image** (`ARG BASE_IMAGE`, default
 `nexus.corp.local:8443/corp/ubi9-corp:9.8`: **placeholder**, adapt the registry prefix).
 
 ```bash
 # context = repository ROOT (the image embeds ci-scripts/)
-podman build -f infra/runner-image/Dockerfile --build-arg BASE_IMAGE=<registry>/corp/ubi9-corp:9.8 \
-  -t nexus.corp.local:8443/ci/ansible-collection-runner:2026.10 \
-  -t nexus.corp.local:8443/ci/ansible-collection-runner:aci-$(cat ci-scripts/VERSION) .
+podman build -f infra/ci-tools-image/Containerfile --build-arg BASE_IMAGE=<registry>/corp/ubi9-corp:9.8 \
+  -t nexus.corp.local:8443/corp/ci-tools-image:2026.10 \
+  -t nexus.corp.local:8443/corp/ci-tools-image:aci-$(cat ci-scripts/VERSION) .
 ```
-Two tags: calendar (`2026.10`, the default of the Jenkins pod template and of the GitLab component) and
+Two tags: calendar (`2026.10`, the default `ciToolsImage` of the Jenkins library and `runner-image` of the GitLab component) and
 scripts version (`aci-1.1.0`). The GitLab component checks the version (`ACI_EXPECTED_VERSION`); on
-Jenkins, the image tag set in `infra/jenkins/jcasc.yaml` decides which `aci` every build runs.
+Jenkins, the `ciToolsImage` pipeline parameter (default in `jenkins-shared-library/vars/ansibleCollectionPipeline.groovy`)
+decides which `aci` every build runs.
 
 | ARG | Default | Role |
 |---|---|---|
