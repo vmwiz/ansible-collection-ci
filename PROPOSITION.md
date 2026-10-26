@@ -275,7 +275,7 @@ which removes `tools/sync.sh`'s scripts copy and the risk of two diverging versi
 ## 8. Onboarding a collection
 
 1. `meta/runtime.yml`: `requires_ansible: '>=2.16.0'` (or `>=2.18.0`); `galaxy.yml`: `tags` (mandatory),
-   `build_ignore: [Jenkinsfile, .gitlab-ci.yml, reports, dist]`; `.gitignore`: `reports/ dist/ tests/output/`.
+   `build_ignore: [Jenkinsfile, Jenkinsfile.dev, .gitlab-ci.yml, reports, dist]`; `.gitignore`: `reports/ dist/ tests/output/`.
 2. Python files: header `from __future__ import (absolute_import, division, print_function)` +
    `__metaclass__ = type` (2.16 sanity and certification).
 3. `.ansible-lint`: `profile: production` (or absent); `changelogs/config.yaml` (antsibull-changelog);
@@ -458,6 +458,20 @@ the airgapped runs, UID `1000680000:0`, `--cap-drop ALL`, `no-new-privileges`, c
   integration, Molecule). They are only in the git history (tag `v3-nox`).
 
 ### 14.3 Jenkins end-to-end results
+
+**2.1.1 (26/10/2026)**: `DEV=1 run-e2e.sh`, **no** Global Pipeline Library configured (checked: empty list); the
+jobs load the library with the `library` step from a copy of the whole repository
+(`modernSCM(scm: [GitSCMSource ...], libraryPath: 'jenkins-shared-library/')`), repositories made by
+`tools/export-collection.sh` (corp.demo at the root, `Jenkinsfile.dev` as `Jenkinsfile`).
+
+| Job | Result | What it shows |
+|---|---|---|
+| `corp-demo-dev` (`@master`, full collection) | **SUCCESS**, 122 s | untrusted library in the Groovy sandbox: same stages and results as `corp-demo` (JUnit 78 tests, the informational MEDIUM finding), Integration and Molecule on `builder-1`, `git-readonly` credential resolved |
+| `corp-demo-dev-tag` (`@v2.1.1`, lite) | **SUCCESS**, 92 s | tag resolved via `gitTagDiscovery()`; units, Integration, Molecule skipped |
+| `corp-demo-dev-positional` (`modernSCM([$class: ...], libraryPath: ...)`) | **FAILURE** (expected), 0 s | `Expected named arguments`: with `libraryPath` the SCM must be passed as `scm:` |
+
+Script approval: none pending and none approved after the runs (`ScriptApproval` queried), no
+`RejectedAccessException` in the logs.
 
 **2.1.0 (26/10/2026)**: Jenkins set up without any configuration file (init scripts doing the *Manage
 Jenkins* steps), plain `ansibleCollectionPipeline()` and overridden parameters.

@@ -68,6 +68,13 @@ GID 0), no privilege escalation, `drop: ALL`, seccomp `RuntimeDefault`, requests
 Declare the Global Pipeline Library, the two Secret text credentials, a Kubernetes cloud and the
 `ansible-builder` agents in *Manage Jenkins*: see [`../infra/jenkins/README.md`](../infra/jenkins/README.md).
 
+## Testing without registering the library
+
+A branch, tag or commit of the library can be used without declaring it in *Global Pipeline Libraries*:
+`library identifier: 'ansible-ci@<ref>', retriever: modernSCM(scm: [...], libraryPath: 'jenkins-shared-library/')`,
+see `../example-collection/corp.demo/Jenkinsfile.dev` and [USER-GUIDE.md §2.4](../USER-GUIDE.md) (sandbox, repository
+with the collection at its root via `../tools/export-collection.sh`, *Replay* for quick edits).
+
 ## Changing the pipeline
 
 Edit `vars/ansibleCollectionPipeline.groovy`, run the bench (`../tests/jenkins-e2e/run-e2e.sh`), add a

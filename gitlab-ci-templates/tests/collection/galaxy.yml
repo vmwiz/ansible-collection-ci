@@ -15,4 +15,5 @@ build_ignore:
   - dist
   - reports
   - Jenkinsfile
+  - Jenkinsfile.dev
   - .gitlab-ci.yml

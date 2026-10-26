@@ -1,0 +1,28 @@
+// Development Jenkinsfile: tests the ansible-ci library straight from its git repository, WITHOUT
+// registering it in Manage Jenkins > Global Pipeline Libraries.
+// The pipeline expects the collection at the ROOT of the job repository: use it in a repository that
+// contains only this collection, renamed to `Jenkinsfile` (tools/export-collection.sh does both).
+//
+// Which library version is loaded: the part after '@' in `identifier`:
+//   'ansible-ci@master'         a branch (here: the development branch)
+//   'ansible-ci@v2.1.1'         a tag (needs gitTagDiscovery() below)
+//   'ansible-ci@<40-char sha>'  an exact commit
+// libraryPath: the library is in a sub-directory of the ansible-collection-ci repository.
+//
+// Variant, when this Jenkinsfile lives in the same repository as the library and you want to test the
+// very same commit: retriever: legacySCM(scm: scm, libraryPath: 'jenkins-shared-library/')
+// (only useful if that repository also has the collection at its root).
+//
+// Sandbox: a library loaded with `library` is UNTRUSTED and runs in the Groovy sandbox, unlike the trusted
+// global library. ansible-ci only uses whitelisted calls (validated on Jenkins 2.580.1, no script approval);
+// if a future change needs one, an admin approves it in Manage Jenkins > In-process Script Approval.
+// Quick edits without a commit: open a build > Replay, edit the library script there, then Run.
+library identifier: 'ansible-ci@master',
+        retriever: modernSCM(
+            scm: [$class: 'GitSCMSource',
+                  remote: 'https://gitlab.corp.local/ci/ansible-collection-ci.git',   // PLACEHOLDER: library repository
+                  credentialsId: 'git-readonly',                                       // read-only Jenkins credential
+                  traits: [gitBranchDiscovery(), gitTagDiscovery()]],
+            libraryPath: 'jenkins-shared-library/')
+
+ansibleCollectionPipeline()

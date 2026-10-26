@@ -18,6 +18,8 @@
 # $JENKINS_IMAGE and $CI_TOOLS_IMAGE.
 #   usage: tests/jenkins-e2e/run-e2e.sh        -> logs in $OUT (default /tmp/jk/out)
 #          SKIP_BUILD=1 ...                     reuse the bench images built by a previous run
+#          DEV=1 ...                            no global library: jobs load the library with the `library` step
+#                                               from a copy of the whole repository (Jenkinsfile.dev, libraryPath)
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd); repo=$(cd "$here/../.." && pwd)
 W=${W:-/tmp/jk}; OUT=${OUT:-$W/out}
@@ -27,9 +29,10 @@ podman rm -f jenkins runner-1 >/dev/null 2>&1 || true
 sudo pkill -f "agent.jar.*-name builder-1" 2>/dev/null || true
 sudo rm -rf "$W"; mkdir -p "$W/repos" "$W/src" "$W/shared" "$W/builder" "$OUT"; chmod 777 "$W/shared"
 
-# 1) local git repositories: library (tag v2.1.0 + moving tag v2) and the consumer collections
-cp -r "$repo/jenkins-shared-library" "$W/src/ansible-ci"
-python3 - "$W/src/ansible-ci/vars/ansibleCollectionPipeline.groovy" <<'PY'
+# 1) local git repositories
+# bench substitutions applied to every copy of the library (see the header)
+patch_lib() {
+python3 - "$1" <<'PY'
 import sys
 p = sys.argv[1]; s = open(p).read()
 for a, b in [
@@ -43,30 +46,55 @@ for a, b in [
     s = s.replace(a, b)
 open(p, 'w').write(s)
 PY
-(cd "$W/src/ansible-ci" && git init -q -b main && git add -A && git -c user.name=ci -c user.email=ci@corp.local commit -qm bench &&
-  git tag v2.1.0 && git tag v2 && git clone -q --bare . "$W/repos/ansible-ci.git")
-lib="@Library('ansible-ci@v2') _"
-declare -A jf=(
-  [corp-demo]="$lib
+}
+if [ -z "${DEV:-}" ]; then
+  # library repository (tag v2.1.0 + moving tag v2), registered as global library by init.groovy.d/
+  cp -r "$repo/jenkins-shared-library" "$W/src/ansible-ci"
+  patch_lib "$W/src/ansible-ci/vars/ansibleCollectionPipeline.groovy"
+  (cd "$W/src/ansible-ci" && git init -q -b main && git add -A && git -c user.name=ci -c user.email=ci@corp.local commit -qm bench &&
+    git tag v2.1.0 && git tag v2 && git clone -q --bare . "$W/repos/ansible-ci.git")
+  lib="@Library('ansible-ci@v2') _"
+  declare -A jf=(
+    [corp-demo]="$lib
 ansibleCollectionPipeline()"
-  [corp-demo-lite]="@Library('ansible-ci@v2.1.0') _
+    [corp-demo-lite]="@Library('ansible-ci@v2.1.0') _
 ansibleCollectionPipeline()"
-  [corp-demo-params]="$lib
+    [corp-demo-params]="$lib
 ansibleCollectionPipeline(spotterEndpoint: '', spotterCredentialsId: 'bench-team-spotter', galaxyCredentialsId: 'bench-team-galaxy',
                           ciToolsImage: 'localhost/bench/ci-tools-image:override', builderLabel: 'podman-bench')"
-  [corp-demo-spotter]="$lib
+    [corp-demo-spotter]="$lib
 ansibleCollectionPipeline(spotterEndpoint: 'https://spotter.invalid/api', spotterCredentialsId: 'bench-team-spotter')"
-  [corp-demo-typo]="$lib
+    [corp-demo-typo]="$lib
 ansibleCollectionPipeline(spoterEndpoint: 'https://spotter.corp.local/api')"
-)
-for c in "${!jf[@]}"; do
-  cp -r "$repo/example-collection/corp.demo" "$W/src/$c"
-  (cd "$W/src/$c" && rm -rf dist reports tests/output
-   case $c in corp-demo-lite|corp-demo-spotter|corp-demo-typo) rm -rf tests/unit tests/integration extensions/molecule ;; esac
-   printf '%s\n' "${jf[$c]}" > Jenkinsfile
-   git init -q -b main && git add -A && git -c user.name=ci -c user.email=ci@corp.local commit -qm demo &&
-   git clone -q --bare . "$W/repos/$c.git")
-done
+  )
+  for c in "${!jf[@]}"; do
+    cp -r "$repo/example-collection/corp.demo" "$W/src/$c"
+    (cd "$W/src/$c" && rm -rf dist reports tests/output
+     case $c in corp-demo-lite|corp-demo-spotter|corp-demo-typo) rm -rf tests/unit tests/integration extensions/molecule ;; esac
+     printf '%s\n' "${jf[$c]}" > Jenkinsfile
+     git init -q -b main && git add -A && git -c user.name=ci -c user.email=ci@corp.local commit -qm demo &&
+     git clone -q --bare . "$W/repos/$c.git")
+  done
+else
+  # DEV=1: NO global library. Copy of the whole ansible-collection-ci working tree (branch master, tag v2.1.1),
+  # loaded by the jobs with the `library` step + libraryPath, like example-collection/corp.demo/Jenkinsfile.dev
+  rsync -a --exclude .git --exclude 'reports/' --exclude 'dist/' "$repo/" "$W/src/ansible-collection-ci/"
+  patch_lib "$W/src/ansible-collection-ci/jenkins-shared-library/vars/ansibleCollectionPipeline.groovy"
+  (cd "$W/src/ansible-collection-ci" && git init -q -b master && git add -A && git -c user.name=ci -c user.email=ci@corp.local commit -qm bench &&
+    git tag v2.1.1 && git clone -q --bare . "$W/repos/ansible-collection-ci.git")
+  url=file:///repos/ansible-collection-ci.git
+  # corp-demo-dev: full collection at the root, Jenkinsfile.dev as Jenkinsfile, library @master
+  "$repo/tools/export-collection.sh" "$W/src/corp-demo-dev" "$url" master
+  # corp-demo-dev-tag: collection without units/integration/Molecule, library @v2.1.1 (tag discovery)
+  "$repo/tools/export-collection.sh" "$W/src/corp-demo-dev-tag" "$url" v2.1.1
+  (cd "$W/src/corp-demo-dev-tag" && git rm -rq tests/unit tests/integration extensions/molecule && git -c user.name=ci -c user.email=ci@corp.local commit -qm lite)
+  # corp-demo-dev-positional: `modernSCM([$class: ...], libraryPath: ...)` (scm passed positionally) -> expected FAILURE
+  "$repo/tools/export-collection.sh" "$W/src/corp-demo-dev-positional" "$url" master
+  # shellcheck disable=SC2016  # literal $class
+  (cd "$W/src/corp-demo-dev-positional" && sed -i 's/modernSCM($/modernSCM(/; s/            scm: \[\$class/            [$class/' Jenkinsfile &&
+    git -c user.name=ci -c user.email=ci@corp.local commit -qam positional)
+  for c in corp-demo-dev corp-demo-dev-tag corp-demo-dev-positional; do git clone -q --bare "$W/src/$c" "$W/repos/$c.git"; done
+fi
 chmod -R a+rX "$W/repos"
 
 # 2) images
@@ -82,7 +110,8 @@ printf '[global]\nindex-url = https://pypi.org/simple\n' > "$W/pip.conf"
 # 3) Jenkins, then the agents
 podman network exists jk || podman network create jk >/dev/null
 podman run -d --name jenkins --network jk -p 127.0.0.1:8080:8080 \
-  -v "$W/repos:/repos:ro" -v "$W/shared:/var/jenkins_home/shared" localhost/ansible-ci-e2e-jenkins >/dev/null
+  -v "$W/repos:/repos:ro" -v "$W/shared:/var/jenkins_home/shared" ${DEV:+-e ACI_E2E_NO_GLOBAL_LIBRARY=1} \
+  localhost/ansible-ci-e2e-jenkins >/dev/null
 # rootless podman: the bind-mounted repositories look root-owned inside the containers -> safe.directory
 podman exec jenkins git config --global --add safe.directory '*'
 until curl -sf http://127.0.0.1:8080/login >/dev/null && [ -s "$W/shared/runner-1.secret" ]; do sleep 3; done
@@ -111,7 +140,9 @@ echo "agents connected"
 # 4) builds, then the checks of the rendered pod YAML
 crumb() { curl -sf -c "$W/cookies" "$J/crumbIssuer/api/json" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d["crumbRequestField"]+":"+d["crumb"])'; }
 result() { curl -sf "$J/job/$1/1/api/json" 2>/dev/null | python3 -c 'import json,sys; d=json.load(sys.stdin); print("RUNNING" if d["building"] else d["result"])' 2>/dev/null || echo PENDING; }
-jobs=${JOBS:-corp-demo corp-demo-lite corp-demo-params corp-demo-spotter corp-demo-typo}
+if [ -n "${DEV:-}" ]; then dflt="corp-demo-dev corp-demo-dev-tag corp-demo-dev-positional"
+else dflt="corp-demo corp-demo-lite corp-demo-params corp-demo-spotter corp-demo-typo"; fi
+jobs=${JOBS:-$dflt}
 for j in $jobs; do curl -sf -b "$W/cookies" -H "$(crumb)" -X POST "$J/job/$j/build" >/dev/null; done
 for j in $jobs; do
   while :; do r=$(result "$j"); case $r in RUNNING|PENDING) sleep 15 ;; *) break ;; esac; done
@@ -121,3 +152,12 @@ for j in $jobs; do
   img=$([ -s "$OUT/$j.pod.yaml" ] && /opt/ansible-ci/bin/python -c 'import sys,yaml; d=yaml.safe_load(open(sys.argv[1])); print(*[c.get("image","(cloud default)") for c in d["spec"]["containers"]], sep=" | ")' "$OUT/$j.pod.yaml" || echo "-")
   echo "$j #1: $r   pod images: $img"
 done | tee "$OUT/results.txt"
+# script approvals: anything the sandbox rejected and queued for an administrator
+# shellcheck disable=SC2016  # Groovy script, not shell
+curl -sf -b "$W/cookies" -H "$(crumb)" --data-urlencode 'script=import org.jenkinsci.plugins.scriptsecurity.scripts.ScriptApproval
+def a = ScriptApproval.get()
+println "global libraries: ${org.jenkinsci.plugins.workflow.libs.GlobalLibraries.get().libraries*.name}"
+println "pending signatures: ${a.pendingSignatures*.signature}"
+println "pending scripts: ${a.pendingScripts.size()}"
+println "approved signatures: ${a.approvedSignatures as List}"' "$J/scriptText" | tee -a "$OUT/results.txt"
+grep -l "RejectedAccessException\|Scripts not permitted" "$OUT"/*.log 2>/dev/null | sed 's/^/sandbox rejection in: /' | tee -a "$OUT/results.txt" || true

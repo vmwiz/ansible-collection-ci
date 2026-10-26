@@ -55,7 +55,7 @@ certification sanity, so it is tested too.
 Optional stages are switched on and off by the content of your repository: add
 `tests/integration/targets/` or `extensions/molecule/` and the matching stage runs.
 
-To pin a release instead of following the latest 2.x: `@Library('ansible-ci@v2.1.0') _`.
+To pin a release instead of following the latest 2.x: `@Library('ansible-ci@v2.1.1') _`.
 
 ### 2.2 Overriding site settings (rarely needed)
 
@@ -88,6 +88,54 @@ immediately with the list of valid names.
 
 The global library `ansible-ci`, the default credentials, the Kubernetes cloud and the `ansible-builder`
 agents: see `infra/jenkins/README.md`.
+
+### 2.4 Testing the library without registering it
+
+To try a library branch, tag or commit (or the library in a Jenkins where it is not declared in
+*Global Pipeline Libraries*), load it from its git repository with the `library` step instead of `@Library`.
+`example-collection/corp.demo/Jenkinsfile.dev` does exactly that:
+
+```groovy
+library identifier: 'ansible-ci@master',
+        retriever: modernSCM(
+            scm: [$class: 'GitSCMSource',
+                  remote: 'https://gitlab.corp.local/ci/ansible-collection-ci.git',
+                  credentialsId: 'git-readonly',
+                  traits: [gitBranchDiscovery(), gitTagDiscovery()]],
+            libraryPath: 'jenkins-shared-library/')
+
+ansibleCollectionPipeline()
+```
+
+* **Version**: the part after `@`: a branch (`ansible-ci@master`, `ansible-ci@my-fix`), a tag
+  (`ansible-ci@v2.1.1`) or a full commit SHA.
+* **`libraryPath`**: the library is the `jenkins-shared-library/` sub-directory of this repository.
+  When `modernSCM` gets more than one argument, the SCM must be passed as `scm:`
+  (`modernSCM([$class: ...], libraryPath: ...)` is rejected).
+* **`credentialsId`**: ID of a Jenkins credential with read access to the library repository (no secret in
+  the Jenkinsfile).
+* **Same commit as the Jenkinsfile**: `retriever: legacySCM(scm: scm, libraryPath: 'jenkins-shared-library/')`
+  loads the library from the commit being built. Only useful in a repository that holds both the library
+  and, at its root, a collection.
+* **Sandbox**: a library loaded this way is *untrusted* and runs in the Groovy sandbox (the global library is
+  trusted). `ansibleCollectionPipeline` only uses whitelisted calls: on the Jenkins 2.580.1 bench it ran
+  with no script approval. If a future change needs one, the build fails with `Scripts not permitted to use
+  ...` and an admin approves it in *Manage Jenkins > In-process Script Approval*.
+
+**The collection must be at the root of the job repository.** To get such a repository from this one:
+
+```bash
+tools/export-collection.sh /tmp/corp-demo-test https://gitlab.corp.local/ci/ansible-collection-ci.git my-fix
+cd /tmp/corp-demo-test        # corp.demo at the root, Jenkinsfile.dev renamed Jenkinsfile, library @my-fix
+git remote add origin https://gitlab.corp.local/sandbox/corp-demo-test.git && git push -u origin main
+```
+
+Then create a Pipeline (or Multibranch Pipeline) job on that repository. Your own collection works the same:
+copy `Jenkinsfile.dev` into it as `Jenkinsfile`, on a test branch.
+
+**Quick edits without a commit**: open a finished build, *Replay*: the Jenkinsfile and the library script
+(`ansibleCollectionPipeline`) can be edited there and the build re-run. Nothing is saved: commit the change
+to the library branch once it works.
 
 ## 3. GitLab
 

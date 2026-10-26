@@ -4,6 +4,7 @@
 import com.cloudbees.plugins.credentials.CredentialsScope
 import com.cloudbees.plugins.credentials.SystemCredentialsProvider
 import com.cloudbees.plugins.credentials.domains.Domain
+import com.cloudbees.plugins.credentials.impl.UsernamePasswordCredentialsImpl
 import hudson.plugins.git.BranchSpec
 import hudson.plugins.git.GitSCM
 import hudson.slaves.DumbSlave
@@ -32,13 +33,16 @@ def lib = new LibraryConfiguration('ansible-ci', new SCMSourceRetriever(src))
 lib.setDefaultVersion('v2')
 lib.setAllowVersionOverride(true)
 lib.setImplicit(false)
-GlobalLibraries.get().setLibraries([lib])
+// run-e2e.sh DEV=1: no global library at all, the jobs load ansible-ci with the `library` step
+GlobalLibraries.get().setLibraries(System.getenv('ACI_E2E_NO_GLOBAL_LIBRARY') ? [] : [lib])
 
 // Manage Jenkins > Credentials: the two default IDs + the team IDs used by corp-demo-params / corp-demo-spotter
 def store = SystemCredentialsProvider.getInstance().getStore()
 ['spotter-api-token', 'nexus-galaxy-hosted-token', 'bench-team-spotter', 'bench-team-galaxy'].each { id ->
     store.addCredentials(Domain.global(), new StringCredentialsImpl(CredentialsScope.GLOBAL, id, 'bench', Secret.fromString('bench')))
 }
+// read-only git credential referenced by Jenkinsfile.dev (unused by file:// but must resolve)
+store.addCredentials(Domain.global(), new UsernamePasswordCredentialsImpl(CredentialsScope.GLOBAL, 'git-readonly', 'bench', 'bench', 'bench'))
 
 // runner-1 stands in for the OpenShift pod (label used by the bench copy of the library),
 // builder-1 for the ansible-builder Podman VM (both the default label and the one of corp-demo-params)

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Keeps the GitLab component's test collection in sync with the example collection:
-#   example-collection/corp.demo -> gitlab-ci-templates/tests/collection (without Jenkinsfile or .gitlab-ci.yml).
+#   example-collection/corp.demo -> gitlab-ci-templates/tests/collection (without Jenkinsfile, Jenkinsfile.dev or .gitlab-ci.yml).
 # The copy is deliberate: gitlab-ci-templates/ is published as its own repository (git subtree split).
 # Usage: tools/sync.sh          regenerates the copy
 #        tools/sync.sh --check  fails if the copy has diverged (run in CI and before every tag)
@@ -8,7 +8,7 @@ set -euo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
 src=$root/example-collection/corp.demo
 dst=$root/gitlab-ci-templates/tests/collection
-files() { (cd "$1" && find . -type f ! -path './Jenkinsfile' ! -path './.gitlab-ci.yml' ! -path '*__pycache__*' \
+files() { (cd "$1" && find . -type f ! -path './Jenkinsfile' ! -path './Jenkinsfile.dev' ! -path './.gitlab-ci.yml' ! -path '*__pycache__*' \
              ! -path './reports/*' ! -path './dist/*' ! -path './tests/output/*' | sed 's#^\./##' | LC_ALL=C sort); }
 if [ "${1:-}" = --check ]; then
   d=$( { diff <(files "$src") <(files "$dst") || true

@@ -21,11 +21,12 @@ include:
 | `jenkins-shared-library/` | One fixed declarative pipeline, `vars/ansibleCollectionPipeline.groovy` (site parameters with defaults), pod template `resources/ansible-ci/pod.yaml`, `CHANGELOG.md` |
 | `gitlab-ci-templates/` | CI/CD component `ansible-collection` (`templates/ansible-collection/template.yml`, 46 inputs), examples, `tests/` (emulated rendering + GitLab schema, test collection for the component project pipeline), `CHANGELOG.md` |
 | `tools/sync.sh` | Refreshes the copy of `corp.demo` used by the component tests; `--check` fails if it differs |
+| `tools/export-collection.sh` | Creates a stand-alone repository with `corp.demo` at its root and `Jenkinsfile.dev` as `Jenkinsfile` (testing the library without registering it, USER-GUIDE.md §2.4) |
 | `infra/jenkins/` | Admin setup in *Manage Jenkins*: global library, credentials, Kubernetes cloud, `ansible-builder` agents |
 | `infra/ci-tools-image/` | ci-tools-image UBI 9 + python3.12 + `aci` in `/opt/ansible-ci` (build context = repository root) |
 | `infra/ansible-builder-vm/` | Playbook of the podman VM (Jenkins agent / GitLab shell runner); installs `aci` and the `registries.conf` mirrors |
 | `infra/gitlab-runner/`, `infra/openshift/` | GitLab runners, OpenShift options (nested podman POC) |
-| `example-collection/corp.demo/` | Demo collection (Jenkinsfile + .gitlab-ci.yml) |
+| `example-collection/corp.demo/` | Demo collection (Jenkinsfile + .gitlab-ci.yml; `Jenkinsfile.dev` loads the library without registering it) |
 | `tests/` | **Internal test bench, not shipped**: Jenkins 2.580.1 end to end, real run of the rendered GitLab jobs, emulated base image (see `tests/README.md`) |
 
 ## CI maintainers: development cycle

@@ -7,6 +7,13 @@ Jenkinsfiles use `@Library('ansible-ci@v2')` (fixes and compatible changes autom
 * minor: compatible change (e.g. a stage that only runs when the repository opts in);
 * major: behaviour change (matrix, new blocking stage, removed stage).
 
+## v2.1.1 - 2026-10-26
+
+* No pipeline change. Documented and validated loading the library without registering it
+  (`library` step, `modernSCM(scm: ..., libraryPath: 'jenkins-shared-library/')`): it runs in the Groovy
+  sandbox with no script approval. New `example-collection/corp.demo/Jenkinsfile.dev` and
+  `tools/export-collection.sh` (stand-alone test repository with the collection at its root).
+
 ## v2.1.0 - 2026-10-26
 
 * The Configuration as Code file is removed: the admin setup is done in
