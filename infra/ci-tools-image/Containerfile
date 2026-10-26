@@ -1,53 +1,55 @@
 # syntax=docker/dockerfile:1
 # ci-tools-image: CI tools image for Ansible collections, OpenShift pods (Jenkins / GitLab), WITHOUT a container engine.
-# Built on the corporate UBI 9 base image, which already provides (contract, see README.md):
+# Built on the corporate UBI 9 Python image corp/hub/python3:<X.Y>, which already provides (contract, see README.md):
+#   * ONE Python: /usr/bin/python, python3, python3.<Y> (and pip, pip3, pip3.<Y>), with venv + ensurepip;
 #   * the internal CA in the system store (/etc/pki/ca-trust) + REQUESTS_CA_BUNDLE / SSL_CERT_FILE;
 #   * /etc/pip.conf pointing to the Nexus PyPI proxy (read for root as well as for an arbitrary UID);
-#   * yum/microdnf repositories to the internal mirror, BaseOS AND AppStream (python3.12 is in AppStream).
+#   * microdnf repositories to the internal mirror (BaseOS + AppStream).
 #
 # Build context = ROOT of the ansible-collection-ci repository (the image embeds ci-scripts/):
 #   podman build -f infra/ci-tools-image/Containerfile \
-#     --build-arg BASE_IMAGE=nexus.corp.local:8443/corp/ubi9-corp:9.8 \
+#     --build-arg BASE_IMAGE=nexus.corp.local:8443/corp/hub/python3:3.12 \
 #     -t nexus.corp.local:8443/corp/ci-tools-image:2026.10 .
+#
+# One Python per image = the Python of the base image. It is the ansible-test controller Python
+# (`ansible-test --venv`) and hosts the /opt/ansible-ci tooling venv. Controller ranges
+# (CONTROLLER_PYTHON_VERSIONS): 2.16: 3.10-3.12; 2.18: 3.11-3.13; 2.20: 3.12-3.14; 2.22: 3.13-3.15.
+# 3.12 covers the whole AAP 2.6 matrix (2.16, 2.18), 2.20 and the certification; it is also the Python of
+# the EEs. For 2.22 / milestone / devel, build another image from corp/hub/python3:3.14 (2.16 and 2.18 then
+# have no controller Python in that image: `aci` stops with a clear message).
 #
 # No docker CLI: the stages that need an engine run on the ansible-builder VM (host podman).
 # ansible-core is NOT installed here: `aci` creates (and caches) one venv per matrix series.
 # The `aci` scripts (ci-scripts/) are installed in /opt/ansible-ci: both the Jenkins pipeline and the
 # GitLab component call /opt/ansible-ci/bin/aci, so the image tag pins the scripts version.
 
-# PLACEHOLDER: registry prefix to adapt; "corp/ubi9-corp:9.8" = the corporate base image.
-ARG BASE_IMAGE=nexus.corp.local:8443/corp/ubi9-corp:9.8
+# PLACEHOLDER: registry prefix to adapt; "corp/hub/python3:3.12" = the corporate Python base image.
+ARG BASE_IMAGE=nexus.corp.local:8443/corp/hub/python3:3.12
 FROM ${BASE_IMAGE}
 
-# ansible-test CONTROLLER Pythons (CONTROLLER_PYTHON_VERSIONS of the stable-X.Y branches):
-#   2.16: 3.10-3.12; 2.18: 3.11-3.13; 2.20: 3.12-3.14; 2.22: 3.13-3.15.
-# 3.12 covers the whole AAP 2.6 matrix (2.16, 2.18), 2.20 and the certification; it is also the Python
-# of the EEs. It is the only one installed by default. Add 3.14 (RHEL 9.8 AppStream; no 3.13) only to
-# test 2.22 / milestone / devel: --build-arg PYTHON_VERSIONS="3.12 3.14".
-# Choice per series: ci-scripts/share/aci/python-map.txt. The RHEL 9 system python3 (3.9) is kept.
-# The LAST one of the list hosts the tooling venv.
-ARG PYTHON_VERSIONS="3.12"
 # shellcheck: "pip" (shellcheck-py from Nexus, default), "rpm" (ShellCheck from EPEL 9 through the internal
 # mirror) or "none" (the shellcheck sanity test is then skipped in --venv mode).
 ARG SHELLCHECK_SOURCE=pip
 
 USER 0
 
-# 1) System packages (internal repositories of the base image)
+# 1) System packages (internal repositories of the base image); Python comes from the base image.
 #    git-core: ansible-test / galaxy; openssh-clients: ssh-keygen required by ansible-test;
 #    tar/gzip/findutils/rsync/which/diffutils: collection build and scripts; shadow-utils: useradd.
 RUN set -eux; \
     pkgs="git-core openssh-clients tar gzip findutils rsync jq which diffutils shadow-utils"; \
-    for v in ${PYTHON_VERSIONS}; do pkgs="$pkgs python$v python$v-pip"; done; \
     if [ "${SHELLCHECK_SOURCE}" = "rpm" ]; then pkgs="$pkgs ShellCheck"; fi; \
     microdnf -y install --setopt=install_weak_deps=0 --nodocs $pkgs; \
     microdnf clean all; rm -rf /var/cache/yum /var/lib/dnf/history*
 
-# 2) Minimal tooling venv (PyYAML for the aci scripts, shellcheck) - index: /etc/pip.conf
+# 2) Minimal tooling venv (PyYAML for the aci scripts, shellcheck) from the base Python - index: /etc/pip.conf
+#    Created from the VERSIONED interpreter (/usr/bin/python3 resolved, e.g. /usr/bin/python3.12): an RPM
+#    installed later on top of this image (e.g. java-21-openjdk-headless) can pull the RHEL python3 (3.9),
+#    which takes over /usr/bin/python3; the venv and `aci` (python3.<Y> per series) are not affected.
 COPY infra/ci-tools-image/requirements.txt /opt/ansible-ci/requirements.txt
 RUN set -eux; \
-    for v in ${PYTHON_VERSIONS}; do tools_py=$v; done; \
-    "python${tools_py}" -m venv /opt/ansible-ci; \
+    py=$(readlink -f /usr/bin/python3); "$py" --version; \
+    "$py" -m venv /opt/ansible-ci; \
     if [ "${SHELLCHECK_SOURCE}" = "pip" ]; then req=/opt/ansible-ci/requirements.txt; \
     else grep -v '^shellcheck-py' /opt/ansible-ci/requirements.txt > /tmp/req.txt; req=/tmp/req.txt; fi; \
     /opt/ansible-ci/bin/pip install --no-cache-dir --disable-pip-version-check -r "$req"; \
@@ -64,15 +66,21 @@ ENV PATH=/opt/ansible-ci/bin:${PATH} \
 
 # 3) OpenShift-compatible non-root user: arbitrary UID, always a member of GID 0.
 #    HOME belongs to group 0 with the owner's permissions (chgrp 0 + chmod g=u).
+#    If the base image already has a UID 1001 user, it is reused (only HOME=/home/ci is created).
 #    ansible-test --venv normally downloads get-pip from the Internet: `aci sanity|units` puts
 #    get_pip_offline.py (ensurepip + pip from Nexus) in ~/.ansible/test/cache instead when needed.
 RUN set -eux; \
-    useradd --uid 1001 --gid 0 --home-dir /home/ci --create-home --shell /bin/bash ci; \
+    if getent passwd 1001 >/dev/null; then mkdir -p /home/ci; chown 1001:0 /home/ci; \
+    else useradd --uid 1001 --gid 0 --home-dir /home/ci --create-home --shell /bin/bash ci; fi; \
     chgrp -R 0 /home/ci; chmod -R g=u /home/ci
 ENV HOME=/home/ci USER=ci LOGNAME=ci
 USER 1001
 WORKDIR /home/ci
 
-# 4) Checks
-RUN for v in ${PYTHON_VERSIONS}; do "/usr/bin/python$v" --version; done && aci version && git --version && ssh -V \
+# 4) Checks: one Python, the same behind python / python3 / python3.Y and the tooling venv
+RUN /usr/bin/python3 -c 'import sys, venv, ensurepip; print(sys.executable, sys.version.split()[0])' \
+ && v=$(/usr/bin/python3 -c 'import sys; print("%d.%d" % sys.version_info[:2])') \
+ && [ "$(/usr/bin/python -c 'import sys; print(sys.version)')" = "$(/usr/bin/python${v} -c 'import sys; print(sys.version)')" ] \
+ && [ "$(/opt/ansible-ci/bin/python -c 'import sys; print("%d.%d" % sys.version_info[:2])')" = "$v" ] \
+ && aci version && git --version && ssh -V \
  && if [ "${SHELLCHECK_SOURCE}" != "none" ]; then shellcheck --version; fi

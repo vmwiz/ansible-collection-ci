@@ -123,8 +123,8 @@ parameter (site default in the library), on GitLab by the `runner-image` input (
 The ranges come from `CONTROLLER_PYTHON_VERSIONS` of the ansible-test `stable-2.16/2.18/2.20` branches.
 They are centralised in `share/aci/python-map.txt`, where 3.12 comes first for every series that accepts it
 (2.16 → 2.21). The ci-tools-image and the VM therefore only need **python3.12**. 2.22, `milestone` and
-`devel` (controller ≥ 3.13) need python3.14 added to the image (`PYTHON_VERSIONS="3.12 3.14"`). Without
-it, `aci` stops with "no controller Python for ansible-core 2.22 on this agent".
+`devel` (controller ≥ 3.13) need a 3.14 controller: a second ci-tools-image built from
+`corp/hub/python3:3.14` (one Python per image), or `python3.14` on the VM. Without it, `aci` stops with "no controller Python for ansible-core 2.22 on this agent".
 
 **Matrix derived from the EEs (GitLab only, `target-ees`)**: on the VM,
 `podman run --rm --pull=missing --network none --entrypoint ansible <EE> --version` reads `ansible [core X.Y.Z]`
@@ -344,7 +344,7 @@ which removes `tools/sync.sh`'s scripts copy and the risk of two diverging versi
 | `raw-hosted` | Raw | — | *optional*: ansible-core `devel`/`milestone` tarballs (`ACI_CORE_SRC_DEVEL` / `ACI_CORE_SRC_MILESTONE`), kind/helm binaries. The `get-pip` scripts are **no longer** needed (§12) |
 | `gitlab-registry-proxy` (e.g. port 8446) | Docker proxy | `https://registry.gitlab.com` | helper image `gitlab-runner-helper-ocp` for the Kubernetes executor on OpenShift |
 | `redhat-registry-proxy` (e.g. port 8447) | Docker proxy | `https://registry.redhat.io` (Red Hat service account) | **AAP EEs** (`ansible-automation-platform-26/ee-minimal-rhel9`...) for `target-ees`; or Private Automation Hub |
-| `rpm-proxy` / BaseOS-AppStream repositories (+ optional EPEL 9) | Yum proxy | RHEL 9 / UBI 9 repositories | corporate UBI 9 base image and ci-tools-image (`python3.12` is in **AppStream**); `ansible-builder` VM (podman, python3.12...); EPEL only for the `ShellCheck` RPM |
+| `rpm-proxy` / BaseOS-AppStream repositories (+ optional EPEL 9) | Yum proxy | RHEL 9 / UBI 9 repositories | corporate UBI 9 Python image and ci-tools-image (git, ssh, jq...); `ansible-builder` VM (podman, python3.12...); EPEL only for the `ShellCheck` RPM |
 
 Nexus notes:
 * enable the **Docker Bearer Token** and **Ansible Galaxy Bearer Token** realms ([Sonatype doc](https://help.sonatype.com/en/configure-ansible-with-nexus.html)). The Nexus Galaxy token is `base64("user:password")`;
@@ -356,15 +356,17 @@ Nexus notes:
 ## 11. Images
 
 ### 11.1 ci-tools-image (`infra/ci-tools-image/`, details in its README)
-* `FROM` the corporate **UBI 9** base image (`ARG BASE_IMAGE`, default `nexus.corp.local:8443/corp/ubi9-corp:9.8`,
-  placeholder). The CA, `/etc/pip.conf` (Nexus) and the internal microdnf repositories come from this base.
-* Adds **python3.12** from AppStream: it covers 2.16, 2.18, 2.20, the certification and matches the Python
-  of the AAP EEs. python3.14 is only added on request (`PYTHON_VERSIONS="3.12 3.14"`) for 2.22 / `devel`;
-  RHEL 9.8 has no 3.13. The system `python3` (3.9) is left untouched.
+* `FROM` the corporate **UBI 9 Python** image (`ARG BASE_IMAGE`, default
+  `nexus.corp.local:8443/corp/hub/python3:3.12`, registry prefix = placeholder). The CA, `/etc/pip.conf`
+  (Nexus), the internal microdnf repositories **and Python** (`/usr/bin/python`, `python3`, `python3.12`,
+  same for pip) come from this base.
+* **One Python per image**, the base one: 3.12 covers 2.16, 2.18, 2.20, the certification and matches the
+  Python of the AAP EEs; it is the `ansible-test --venv` controller and hosts `/opt/ansible-ci`. For
+  2.22 / `devel`, build another image with `BASE_IMAGE=.../corp/hub/python3:3.14` (images exist for 3.6 to 3.14).
 * Adds `git-core`, `openssh-clients`, `tar`, `gzip`, `rsync`, `jq`; a tooling venv `/opt/ansible-ci`
   (PyYAML, shellcheck-py); the **`aci` scripts** (`/opt/ansible-ci/bin/aci`); the `ci` user (UID 1001,
   GID 0, HOME with `g=u`, compatible with an arbitrary OpenShift UID).
-* No container engine or CLI. **326 MB** (388 MB with python3.14). Tags `2026.MM` and `aci-X.Y.Z`.
+* No container engine or CLI. **277 MB** (stand-in base, v2.2.0). Tags `2026.MM` and `aci-X.Y.Z`.
 * ansible-core is not in the image: `aci` creates one venv per series (`~/.cache/ansible-ci/venv`, `flock`
   lock), from Nexus.
 
@@ -458,6 +460,16 @@ the airgapped runs, UID `1000680000:0`, `--cap-drop ALL`, `no-new-privileges`, c
   integration, Molecule). They are only in the git history (tag `v3-nox`).
 
 ### 14.3 Jenkins end-to-end results
+
+**2.2.0 (26/10/2026)**: ci-tools-image rebuilt `FROM` a stand-in of `corp/hub/python3:3.12` (UBI 9 minimal +
+UBI AppStream `python3.12`/`python3.12-pip` linked as `/usr/bin/python`, `python3`, `pip`, `pip3`, no Python 3.9),
+277 MB. Same five jobs and results as 2.1.0: `corp-demo` SUCCESS 150 s (JUnit 78, sanity + units 2.16 / 2.18 /
+2.20 with a Python 3.12 controller), `corp-demo-lite` SUCCESS 144 s, `corp-demo-params` SUCCESS 165 s,
+`corp-demo-spotter` UNSTABLE, `corp-demo-typo` FAILURE (expected). The bench agent image adds
+`java-21-openjdk-headless`, which pulls the RHEL `python3` 3.9 onto `/usr/bin/python3`: the first build failed
+(tooling venv linked to `/usr/bin/python3`, pip saw no ansible-core ≥ 2.16); the venv is now created from the
+resolved versioned interpreter. A `corp/hub/python3:3.14` stand-in was also built: `aci` picks python3.14 for
+2.20 / 2.22 and stops on 2.16 with "no controller Python".
 
 **2.1.1 (26/10/2026)**: `DEV=1 run-e2e.sh`, **no** Global Pipeline Library configured (checked: empty list); the
 jobs load the library with the `library` step from a copy of the whole repository
@@ -560,8 +572,8 @@ as root; on the real VM the playbook enables linger for the CI user instead.
     remains after `--display-level` filtering (default: `error`).
 18. ✔ **ansible-security-scanner false positive** (`linux_cap_bpf_granted_to_container_or_service` triggered by
     `podman_container` + `systemd`): targeted suppression `# nosec: <rule_id> reason="..."`.
-19. **UBI 9**: `python3` = 3.9; AppStream has 3.11, 3.12 and 3.14 but **not 3.13**; no ShellCheck outside
-    EPEL; CA path = `/etc/pki/tls/certs/ca-bundle.crt`.
+19. **UBI 9**: system `python3` = 3.9; AppStream has 3.11, 3.12 and 3.14 but **not 3.13** (the ci-tools-image
+    now takes its Python from `corp/hub/python3:<X.Y>`, the VM from AppStream); no ShellCheck outside EPEL; CA path = `/etc/pki/tls/certs/ca-bundle.crt`.
 20. ✔ **GitLab `cache:` inside the project**: lint, yamllint and sanity scan the cached venvs. The component
     does not use `cache:`; persistent volume on `~/.cache/ansible-ci` instead.
 21. ✔ **GitLab `array` input interpolated alone in `variables:`** stays a YAML array, refused by the schema.

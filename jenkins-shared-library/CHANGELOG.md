@@ -7,6 +7,12 @@ Jenkinsfiles use `@Library('ansible-ci@v2')` (fixes and compatible changes autom
 * minor: compatible change (e.g. a stage that only runs when the repository opts in);
 * major: behaviour change (matrix, new blocking stage, removed stage).
 
+## v2.2.0 - 2026-10-26
+
+* No pipeline change. The ci-tools-image (default `ciToolsImage`) is now built `FROM`
+  `corp/hub/python3:3.12` (corporate UBI 9 Python image): one Python per image (the base one), no more
+  AppStream `python3.12` install nor `PYTHON_VERSIONS`; 2.22 / devel = an image from `corp/hub/python3:3.14`.
+
 ## v2.1.1 - 2026-10-26
 
 * No pipeline change. Documented and validated loading the library without registering it

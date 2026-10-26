@@ -42,7 +42,7 @@ gitlab-ci-templates/tests/validate.sh            # rendering + official schema +
 tests/jenkins-e2e/run-e2e.sh
 tests/gitlab-jobs/run-jobs.sh tests/gitlab-jobs/inputs/bench.yml branch "aci-lint aci-certification"
 # 4. ci-tools-image (its tag is the aci version used by Jenkins and GitLab)
-podman build -f infra/ci-tools-image/Containerfile --build-arg BASE_IMAGE=<registry>/corp/ubi9-corp:9.8 \
+podman build -f infra/ci-tools-image/Containerfile --build-arg BASE_IMAGE=<registry>/corp/hub/python3:3.12 \
   -t nexus.corp.local:8443/corp/ci-tools-image:2026.10 .
 ```
 

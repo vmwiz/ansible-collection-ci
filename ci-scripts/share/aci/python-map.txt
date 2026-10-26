@@ -5,7 +5,8 @@
 # series    pythons (the first one present on the agent wins)
 # 3.12 first wherever ansible-test accepts it (2.16 -> 2.21): it is the Python of the AAP 2.6/2.7 EEs and
 # of the certification, and the only Python required on the ci-tools-image and the VM. 2.22, milestone and
-# devel (controller >= 3.13) need python3.14 added (PYTHON_VERSIONS="3.12 3.14").
+# devel (controller >= 3.13) need a 3.14 controller: a ci-tools-image built from corp/hub/python3:3.14,
+# or python3.14 in builder_extra_pythons on the VM.
 2.16        3.12 3.11 3.10
 2.18        3.12 3.13 3.11
 2.19        3.12 3.13 3.11

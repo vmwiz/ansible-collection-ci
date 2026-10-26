@@ -1,7 +1,13 @@
-# TEST ONLY: emulates the corporate base image "ubi9-corp:9.8" (UBI 9 + system python3 3.9,
-# internal CA, /etc/pip.conf to the PyPI proxy, microdnf repositories). Here the repositories stay UBI's.
+# TEST ONLY: emulates the corporate Python base image "corp/hub/python3:3.12": UBI 9 minimal + python3.12
+# and python3.12-pip from UBI AppStream, exposed as /usr/bin/python, python3, python3.12 and pip, pip3,
+# pip3.12 (no python 3.9), internal CA, /etc/pip.conf to the PyPI proxy, microdnf repositories
+# (here the repositories stay UBI's). PY=3.14 emulates corp/hub/python3:3.14.
 FROM registry.access.redhat.com/ubi9/ubi-minimal:latest
-RUN microdnf -y install --setopt=install_weak_deps=0 --nodocs python3 python3-pip && microdnf clean all
+ARG PY=3.12
+RUN microdnf -y install --setopt=install_weak_deps=0 --nodocs "python${PY}" "python${PY}-pip" && microdnf clean all \
+ && ln -sfn "python${PY}" /usr/bin/python3 && ln -sfn "python${PY}" /usr/bin/python \
+ && ln -sfn "pip${PY}" /usr/bin/pip3 && ln -sfn "pip${PY}" /usr/bin/pip \
+ && ls -l /usr/bin/python* /usr/bin/pip*
 COPY corp-test-ca.crt /etc/pki/ca-trust/source/anchors/corp-test-ca.crt
 RUN update-ca-trust
 COPY pip.conf /etc/pip.conf
