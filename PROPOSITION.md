@@ -31,12 +31,12 @@ include:
   - component: $CI_SERVER_FQDN/ci/ansible-collection-ci/ansible-collection@1
 ```
 
-These lines start the whole pipeline:
-* lint, docs, build, galaxy-importer, security scan, Red Hat certification, Spotter;
-* changelog fragment on PRs/MRs;
+These lines start the whole pipeline, in this order (each block only if the previous one passed):
+* static analysis: lint, docs, changelog fragment on PRs/MRs, security scan, Spotter;
 * ansible-test sanity and units on ansible-core 2.16 and 2.18 (plus 2.20, see §3), Python 3.12;
 * integration and Molecule on the Podman VM when the collection has them;
-* publication to Nexus on every tag.
+* build **once**, galaxy-importer and Red Hat certification on that tarball;
+* publication to Nexus of that same tarball on every tag.
 
 Everything runs airgapped behind Nexus: OpenShift `restricted-v2` pods and an `ansible-builder` VM (podman).
 
@@ -63,7 +63,7 @@ Everything runs airgapped behind Nexus: OpenShift `restricted-v2` pods and an `a
 ```mermaid
 flowchart LR
   subgraph repo[ansible-collection-ci repository - CI maintainers]
-    aci[ci-scripts/: bash CLI aci 1.1.0<br/>+ Python helpers, pinned versions,<br/>certification.env]
+    aci[ci-scripts/: bash CLI aci 1.2.0<br/>+ Python helpers, pinned versions,<br/>certification.env]
     jsl[jenkins-shared-library/<br/>vars/ansibleCollectionPipeline.groovy]
     glc[gitlab-ci-templates/<br/>templates/ansible-collection]
     img[infra/ci-tools-image<br/>UBI 9 + py3.12 + aci]
@@ -77,7 +77,7 @@ flowchart LR
   jsl --> jk
   glc --> gl
   subgraph OCP[OpenShift restricted-v2]
-    pod[ci-tools-image pod: static checks, certification,<br/>sanity/units --venv]
+    pod[ci-tools-image pod: static analysis, sanity/units --venv,<br/>build + certification, publish]
   end
   subgraph VMB[ansible-builder VM]
     pdm[podman: --docker, integration,<br/>molecule, EE introspection]
@@ -139,16 +139,21 @@ the value to use). The Jenkins pipeline has no EE introspection: its matrix is f
 
 | Stage | `aci` | Agent | When |
 |---|---|---|---|
-| Static checks › Lint | `lint` (yamllint --strict, antsibull-changelog lint, ansible-lint --offline), `docs` (antsibull-docs) | pod | always |
-| Static checks › Certification | `certification` | pod | always |
-| Static checks › Build | `build`, `importer` (tarball archived) | pod | always |
-| Static checks › Security scan | `security-scan` (blocking from HIGH) | pod | always |
-| Static checks › Spotter | `spotter` (private instance), findings → UNSTABLE | pod | `spotterEndpoint` not empty |
-| Static checks › Changelog fragment | `changelog-check` | pod | pull requests (`changeRequest()`) |
-| ansible-test (matrix `ACI_CORE` = 2.16, 2.18, 2.20) | `sanity`, `units` | pod (`venv` mode) | always; units if `tests/unit/` exists |
-| Container tests › Integration | `integration` (`ACI_TEST_MODE=docker`, default image, ansible-core 2.18) | VM | `tests/integration/targets/` exists |
-| Container tests › Molecule | `molecule` | VM | `extensions/molecule/` exists |
-| Publish | `build`, `publish` (tag = `galaxy.yml` version) | pod | tag builds (`buildingTag()`) |
+| 1. Static analysis › Lint | `lint` (yamllint --strict, antsibull-changelog lint, ansible-lint --offline) | pod | always |
+| 1. Static analysis › Docs | `docs` (antsibull-docs) | pod | always |
+| 1. Static analysis › Changelog fragment | `changelog-check` | pod | pull requests (`changeRequest()`) |
+| 1. Static analysis › Security scan | `security-scan` (blocking from HIGH) | pod | always |
+| 1. Static analysis › Spotter | `spotter` (private instance), findings → UNSTABLE | pod | `spotterEndpoint` not empty |
+| 2. ansible-test (matrix `ACI_CORE` = 2.16, 2.18, 2.20) | `sanity`, `units` | pod (`venv` mode) | always; units if `tests/unit/` exists |
+| 3. Container tests › Integration | `integration` (`ACI_TEST_MODE=docker`, default image, ansible-core 2.18) | VM | `tests/integration/targets/` exists |
+| 3. Container tests › Molecule | `molecule` | VM | `extensions/molecule/` exists |
+| 4. Package & certify | `build` (tarball archived + fingerprinted, `stash 'dist'`), `importer`, `certification` (both on that tarball) | pod | always |
+| 5. Publish | `unstash 'dist'`, `publish` of the certified tarball (tag = `galaxy.yml` version) | pod | tag builds (`buildingTag()`) |
+
+Each block runs only if the previous one passed (UNSTABLE, e.g. Spotter findings, does not stop it). The
+collection is built **once**, after all the tests: `aci importer`, `aci certification` and `aci publish`
+never rebuild, they take `dist/<ns>-<name>-<version>.tar.gz` (and stop if it is missing) and log its
+sha256, so the published artifact is the certified one.
 
 The matrix uses the declarative `matrix` directive: its axis values are literals, which is possible now
 that the matrix is fixed. Each `aci` call archives `reports/**` and publishes its JUnit files; the exit
@@ -156,20 +161,24 @@ code of `aci` alone decides the stage result.
 
 ### 4.2 GitLab (configurable)
 
-| Stage | GitLab job | `aci` | Agent | When |
+Same order as Jenkins, chained with `needs` (optional needs: a job disabled by its input is not waited
+for; `allow_failure` jobs do not block). `aci-build` and `aci-certification` are in `stage-test`, after the
+container tests; `aci-publish` (`stage-publish`) takes the `dist/` artifact of `aci-build`.
+
+| Block | GitLab job | `aci` | Agent | When |
 |---|---|---|---|---|
-| EE introspection | `aci-ee-introspect` (`.pre`) | `ee-introspect` | VM | `target-ees` |
-| Changelog | `aci-changelog` | `changelog-check` | pod | MR |
-| Certification | `aci-certification` | `certification` | pod | always (can be disabled) |
-| Lint / Docs | `aci-lint`, `aci-docs` | `lint`, `docs` | pod | always |
-| Build + import | `aci-build` | `build`, `importer` | pod | always |
-| Security / Spotter | `aci-security`, `aci-spotter` | `security-scan`, `spotter` | pod | always / `spotter` |
-| Sanity / units | `aci-{sanity,units}-{venv,docker}` (`parallel:matrix`) | `sanity`, `units` | pod (venv) / VM (docker) | always; docker on main/tags/schedules in `auto` mode |
-| Optional series | `aci-optional-cores` | `sanity`, `units` | pod | `ansible-core-optional` |
-| Certification sanity | `aci-certification-sanity` | `sanity` (Python 3.12) | pod | series 2.16/2.18/2.20 ≥ `requires_ansible` not yet covered with 3.12 |
-| Integration / Molecule | `aci-integration`, `aci-molecule` | `integration`, `molecule` | VM | `integration` / `molecule` |
-| EE units (POC) | `aci-ee-units` | `ee-units` | VM | `ee-tests` |
-| Publication | `aci-publish` | `publish` | pod | tag |
+| (`.pre`) EE introspection | `aci-ee-introspect` | `ee-introspect` | VM | `target-ees` |
+| 1. Lint / Docs | `aci-lint`, `aci-docs` | `lint`, `docs` | pod | always |
+| 1. Changelog | `aci-changelog` | `changelog-check` | pod | MR |
+| 1. Security / Spotter | `aci-security`, `aci-spotter` | `security-scan`, `spotter` | pod | always / `spotter` |
+| 2. Sanity / units | `aci-{sanity,units}-{venv,docker}` (`parallel:matrix`) | `sanity`, `units` | pod (venv) / VM (docker) | always; docker on main/tags/schedules in `auto` mode |
+| 2. Optional series | `aci-optional-cores` | `sanity`, `units` | pod | `ansible-core-optional` |
+| 2. Certification sanity | `aci-certification-sanity` | `sanity` (Python 3.12) | pod | series 2.16/2.18/2.20 ≥ `requires_ansible` not yet covered with 3.12 |
+| 3. Integration / Molecule | `aci-integration`, `aci-molecule` | `integration`, `molecule` | VM | `integration` / `molecule` |
+| 2. EE units (POC) | `aci-ee-units` | `ee-units` | VM | `ee-tests` |
+| 4. Build + import | `aci-build` | `build`, `importer` | pod | always |
+| 4. Certification | `aci-certification` | `certification` (on the `aci-build` tarball) | pod | always (can be disabled) |
+| 5. Publication | `aci-publish` | `publish` (the `aci-build` tarball) | pod | tag |
 
 Reports are written to `reports/<stage>-<series>/`: JUnit (published by Jenkins `junit` and GitLab
 `artifacts:reports:junit`), `importer_result.json`, SARIF, `guards.txt`, `matrix.txt`; all archived.
@@ -189,7 +198,7 @@ ACI_CERT_SUPPORTED_CORES="2.16 2.18 2.20"    + list of allowed ignores, mandator
 
 | Checker control | Reproduction | Difference |
 |---|---|---|
-| galaxy-importer 0.4.39, Python 3.12, `ansible-core==2.16.19`, `distlib>=0.3.9`, `CHECK_REQUIRED_TAGS=True`, `RUN_ANSIBLE_LINT=False`, `--git-clone-path` | dedicated pinned venv, `python -m galaxy_importer.main --git-clone-path <tree> --output-path reports/certification` | none (as seen in the v6.0.0 workflow) |
+| galaxy-importer 0.4.39, Python 3.12, `ansible-core==2.16.19`, `distlib>=0.3.9`, `CHECK_REQUIRED_TAGS=True`, `RUN_ANSIBLE_LINT=False`, `--git-clone-path` | dedicated pinned venv, `python -m galaxy_importer.main dist/<ns>-<name>-<version>.tar.gz` (the tarball of `aci build`) | the checker builds the tarball from a git clone (`--git-clone-path`); `aci` imports the one already built, so the certified tarball is the published one (same content: same `ansible-galaxy collection build` of the same tree) |
 | ansible-lint 26.4.0 `--profile=production` | same version, same profile, `--offline` | `--offline` (airgap) |
 | sanity `stable-2.16/2.18/2.20` filtered by `requires_ansible` (regex `>=X.Y`), Python 3.12 | Jenkins: the fixed matrix (venv, Python 3.12); GitLab: `aci certification sanity-cores` then `aci sanity` for the uncovered series | the checker runs `ansible-test-gh-action` in docker; here the sanity runs in venv mode with Python 3.12 |
 
@@ -225,7 +234,7 @@ Unknown keys stop the build before any agent is allocated.
 | Timeouts, history | pipeline (fixed) | 90 min per build, 20 builds kept |
 | Nexus | parameters `galaxyUrl`, `galaxyPublishUrl`, `pypiEndpoint`, `imageMirror` | → `ACI_GALAXY_URL`, `ACI_GALAXY_PUBLISH_URL`, `ACI_PYPI_ENDPOINT`, `ACI_IMAGE_MIRROR` |
 | Spotter | parameters `spotterEndpoint` (empty = stage skipped), `spotterCacert` | → `SPOTTER_ENDPOINT`, `SPOTTER_CACERT` |
-| ci-tools-image (= `aci` version) | parameter `ciToolsImage`, substituted into `resources/ansible-ci/pod.yaml` | `nexus.corp.local:8443/corp/ci-tools-image:2026.10` |
+| ci-tools-image (= `aci` version) | parameter `ciToolsImage`, substituted into `resources/ansible-ci/pod.yaml` | `nexus.corp.local:8443/corp/ci-tools-image:2026.10.1` |
 | Podman agents | parameter `builderLabel` | `ansible-builder` |
 | Secrets | parameters `spotterCredentialsId`, `galaxyCredentialsId` = IDs of Jenkins Secret text credentials | `spotter-api-token`, `nexus-galaxy-hosted-token` |
 | Library version | *Manage Jenkins* global library | default `v2` |
@@ -257,7 +266,7 @@ way as the Jenkins library is possible but not done in 2.x.
    (`tests/jenkins-e2e/run-e2e.sh`, `tests/gitlab-jobs/run-jobs.sh`, see `tests/README.md`).
 3. Update `VERSION`, the `CHANGELOG.md` files, `ACI_EXPECTED_VERSION` and the default `runner-image` of the
    component (`validate.sh` checks consistency).
-4. Build and push the ci-tools-image (`2026.MM` + `aci-X.Y.Z`), update the `ciToolsImage` default of the
+4. Build and push the ci-tools-image (`YYYY.MM[.N]` + `aci-X.Y.Z`, never overwrite a published tag), update the `ciToolsImage` default of the
    Jenkins library, re-run the VM playbook.
 5. Publish:
    * `git subtree split --prefix jenkins-shared-library` → repository `ci/ansible-ci-jenkins`, tag `vX.Y.Z`
@@ -460,6 +469,21 @@ the airgapped runs, UID `1000680000:0`, `--cap-drop ALL`, `no-new-privileges`, c
   integration, Molecule). They are only in the git history (tag `v3-nox`).
 
 ### 14.3 Jenkins end-to-end results
+
+**2.3.0 (28/10/2026)**: new order (static analysis → ansible-test → container tests → package & certify →
+publish), ci-tools-image `2026.10.1` (`aci` 1.2.0, stand-in base). Order checked from `wfapi/describe`
+(every executed stage of a block ends before the next block starts); tarball sha256 compared across steps.
+
+| Job | Result | What it shows |
+|---|---|---|
+| `corp-demo` | **SUCCESS**, 271 s | 4 blocks in order; one `ansible-galaxy collection build`; build = importer = certification = archived artifact (same sha256); JUnit 78 (the informational MEDIUM finding) |
+| `corp-demo-lite` (`@v2.1.0`) | **SUCCESS**, 251 s | units, Integration, Molecule skipped; container block empty, package after ansible-test |
+| `corp-demo-params` | **SUCCESS**, 289 s | same as `corp-demo` with the overridden parameters |
+| `corp-demo-spotter` | **UNSTABLE** (expected), 259 s | Spotter UNSTABLE does not stop the next blocks |
+| `corp-demo-typo` | **FAILURE** (expected), 3 s | unknown parameter, no stage |
+| `corp-demo-release` » `1.0.0` (tag build) | **SUCCESS**, 274 s | Publish after Package & certify: `unstash 'dist'`, `aci publish` to the fake Galaxy; build = importer = certification = publish = archived = uploaded tarball (sha256 `1ea9d8ac…`) |
+
+Longer than 2.2.0 (~150 s) because the static analysis no longer runs in parallel with the tests. No script approval.
 
 **2.2.0 (26/10/2026)**: ci-tools-image rebuilt `FROM` a stand-in of `corp/hub/python3:3.12` (UBI 9 minimal +
 UBI AppStream `python3.12`/`python3.12-pip` linked as `/usr/bin/python`, `python3`, `pip`, `pip3`, no Python 3.9),

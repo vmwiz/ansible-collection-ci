@@ -37,7 +37,7 @@ All optional. An unknown key stops the build at once with the list of allowed ke
 | `imageMirror` | `nexus.corp.local:8444` | Docker proxy of quay.io for ansible-test / Molecule images (`ACI_IMAGE_MIRROR`) |
 | `spotterEndpoint` | `''` | Private Spotter API (`SPOTTER_ENDPOINT`); **empty = Spotter stage skipped** |
 | `spotterCacert` | `/etc/pki/tls/certs/ca-bundle.crt` | CA bundle for the Spotter API (`SPOTTER_CACERT`) |
-| `ciToolsImage` | `nexus.corp.local:8443/corp/ci-tools-image:2026.10` | Image of the `runner` container of the pod; its tag pins the `aci` version |
+| `ciToolsImage` | `nexus.corp.local:8443/corp/ci-tools-image:2026.10.1` | Image of the `runner` container of the pod; its tag pins the `aci` version |
 | `builderLabel` | `ansible-builder` | Label of the Podman VM agents (Integration, Molecule) |
 | `spotterCredentialsId` | `spotter-api-token` | ID of the Secret text credential holding the Spotter token (`SPOTTER_TOKEN`) |
 | `galaxyCredentialsId` | `nexus-galaxy-hosted-token` | ID of the Secret text credential allowed to publish (`ACI_GALAXY_TOKEN`) |
@@ -47,14 +47,17 @@ Jenkins credential **IDs**, never secrets.
 
 ## Stages
 
+In this order; each stage runs only if the previous one passed.
+
 | Stage | Agent | Runs when |
 |---|---|---|
-| Static checks: Lint (+ docs), Certification, Build (+ galaxy-importer), Security scan | OpenShift pod | always |
-| Static checks: Spotter (findings → UNSTABLE) | pod | `spotterEndpoint` is not empty |
-| Static checks: Changelog fragment | pod | pull requests |
-| ansible-test: sanity + units, matrix 2.16 / 2.18 / 2.20 (Python 3.12) | pod | always; units if `tests/unit/` exists |
-| Container tests: Integration (`--docker`), Molecule | `builderLabel` (Podman VM) | `tests/integration/targets/` / `extensions/molecule/` exists |
-| Publish (Nexus) | pod | tag builds |
+| 1. Static analysis: Lint, Docs, Security scan | OpenShift pod | always |
+| 1. Static analysis: Spotter (findings → UNSTABLE) | pod | `spotterEndpoint` is not empty |
+| 1. Static analysis: Changelog fragment | pod | pull requests |
+| 2. ansible-test: sanity + units, matrix 2.16 / 2.18 / 2.20 (Python 3.12) | pod | always; units if `tests/unit/` exists |
+| 3. Container tests: Integration (`--docker`), Molecule | `builderLabel` (Podman VM) | `tests/integration/targets/` / `extensions/molecule/` exists |
+| 4. Package & certify: `aci build` (tarball archived + fingerprinted, `stash 'dist'`), `aci importer`, `aci certification` on that tarball | pod | always |
+| 5. Publish (Nexus): `unstash 'dist'`, `aci publish` of the certified tarball (no rebuild) | pod | tag builds |
 
 ## Pod template
 

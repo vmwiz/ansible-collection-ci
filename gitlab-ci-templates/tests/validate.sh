@@ -37,6 +37,27 @@ expect complete branch 'aci-ee-introspect'
 expect complete branch 'aci-optional-cores .*allow_failure=true'
 expect complete branch 'aci-spotter .*allow_failure=true'
 expect complete branch 'aci-integration \[ACI_INTEGRATION_IMAGE=ubuntu2404\]'
+# block order (needs / stages): static analysis < ansible-test < container tests < build < certification < publish
+chain() {  # inputs context job1 job2 ... : each job runs strictly after the previous one
+  local o lv prev=-1 j ok=1; o=$(python3 tests/render.py "$T" -i "tests/inputs/$1.yml" --order "$2") || { ko "order $1/$2: $o"; return; }
+  for j in "${@:3}"; do
+    lv=$(awk -v j="$j" '$2 == j {print $1}' <<<"$o"); [ -n "$lv" ] && [ "$lv" -gt "$prev" ] || ok=0; prev=${lv:-99}
+  done
+  if [ $ok = 1 ]; then ok "order $1/$2: ${*:3}"; else ko "order $1/$2: ${*:3}"; echo "$o"; fi
+}
+chain complete tag aci-lint aci-sanity-docker aci-integration aci-build aci-certification aci-publish
+chain complete tag aci-spotter aci-units-docker aci-molecule aci-build
+chain complete mr aci-changelog aci-sanity-venv aci-integration aci-build aci-certification
+chain minimal tag aci-security aci-sanity-docker aci-build aci-certification aci-publish
+chain minimal branch aci-docs aci-certification-sanity aci-build aci-certification
+if python3 tests/render.py "$T" -i tests/inputs/minimal.yml --job aci-publish --context tag --emit /dev/null &&
+   [ "$(python3 - "$T" <<'PY'
+import sys, yaml
+body = list(yaml.safe_load_all(open(sys.argv[1]).read().replace("!reference", "")))[1]
+print(body["aci-publish"].get("dependencies"), "needs" in body["aci-publish"], body["aci-certification"]["needs"][0])
+PY
+)" = "['aci-build'] False {'job': 'aci-build', 'optional': True}" ]; then ok "publish/certification use the aci-build dist/ artifact"
+else ko "publish/certification artifact"; fi
 # expected scripts version = ci-scripts/VERSION
 v=$(cat ../ci-scripts/VERSION 2>/dev/null || true)
 if [ -z "$v" ] || grep -q "ACI_EXPECTED_VERSION: \"$v\"" "$T"; then ok "ACI_EXPECTED_VERSION = ${v:-?}"; else ko "ACI_EXPECTED_VERSION differs from ci-scripts/VERSION ($v)"; fi

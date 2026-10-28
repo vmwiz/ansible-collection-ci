@@ -42,12 +42,16 @@ ansibleCollectionPipeline()
 
 That is the whole file for most collections: the stages are the same for everybody. It runs:
 
-| Stage | What | Where |
-|---|---|---|
-| Static checks (parallel) | Lint (yamllint, antsibull-changelog lint, ansible-lint) + docs, Red Hat certification checks, build + galaxy-importer, ansible-security-scanner, Spotter (when `spotterEndpoint` is set), changelog fragment (pull requests only) | OpenShift pod |
-| ansible-test | sanity + units on ansible-core **2.16, 2.18 and 2.20**, Python 3.12 (units only if `tests/unit/` exists) | OpenShift pod |
-| Container tests (parallel) | `ansible-test integration --docker` (if `tests/integration/targets/` exists), Molecule (if `extensions/molecule/` exists) | ansible-builder VM (Podman) |
-| Publish | publication to Nexus, on a tag equal to the `galaxy.yml` version | OpenShift pod |
+| # | Stage | What | Where |
+|---|---|---|---|
+| 1 | Static analysis (parallel) | Lint (yamllint, antsibull-changelog lint, ansible-lint), Docs (antsibull-docs), changelog fragment (pull requests only), ansible-security-scanner, Spotter (when `spotterEndpoint` is set; findings → UNSTABLE) | OpenShift pod |
+| 2 | ansible-test | sanity + units on ansible-core **2.16, 2.18 and 2.20**, Python 3.12 (units only if `tests/unit/` exists) | OpenShift pod |
+| 3 | Container tests (parallel) | `ansible-test integration --docker` (if `tests/integration/targets/` exists), Molecule (if `extensions/molecule/` exists) | ansible-builder VM (Podman) |
+| 4 | Package & certify | `ansible-galaxy collection build` **once**, tarball archived (fingerprinted), then galaxy-importer and the Red Hat certification checks on that tarball | OpenShift pod |
+| 5 | Publish | publication to Nexus of **the certified tarball** (no rebuild), on a tag equal to the `galaxy.yml` version | OpenShift pod |
+
+Each stage runs only if the previous one passed: a collection is built and certified only once all its
+tests are green, and what is published is exactly what was certified.
 
 2.16 and 2.18 are the ansible-core versions of AAP 2.6; 2.20 (AAP 2.7) is also part of the Red Hat
 certification sanity, so it is tested too.
@@ -75,7 +79,7 @@ ansibleCollectionPipeline(spotterEndpoint: 'https://spotter.corp.local/api', spo
 | `imageMirror` | `nexus.corp.local:8444` | Docker proxy of quay.io (ansible-test and Molecule images) |
 | `spotterEndpoint` | empty | Private Spotter API; empty = Spotter stage skipped |
 | `spotterCacert` | `/etc/pki/tls/certs/ca-bundle.crt` | CA bundle for the Spotter API |
-| `ciToolsImage` | `nexus.corp.local:8443/corp/ci-tools-image:2026.10` | Image the pod stages run in (it pins the `aci` version) |
+| `ciToolsImage` | `nexus.corp.local:8443/corp/ci-tools-image:2026.10.1` | Image the pod stages run in (it pins the `aci` version) |
 | `builderLabel` | `ansible-builder` | Label of the Podman agents (Integration, Molecule) |
 | `spotterCredentialsId` | `spotter-api-token` | ID of the Jenkins *Secret text* credential with the Spotter token |
 | `galaxyCredentialsId` | `nexus-galaxy-hosted-token` | ID of the Jenkins *Secret text* credential allowed to publish |
@@ -146,7 +150,9 @@ include:
   - component: $CI_SERVER_FQDN/ci/ansible-collection-ci/ansible-collection@1
 ```
 
-It runs the same `aci` checks as Jenkins (default matrix 2.16 + 2.18; certification sanity adds 2.20).
+It runs the same `aci` checks as Jenkins, in the same order (static analysis → ansible-test → container
+tests → build + certification → publish of the certified tarball; default matrix 2.16 + 2.18, certification
+sanity adds 2.20).
 MR jobs check the changelog fragment.
 
 ### 3.2 Complete `.gitlab-ci.yml`
@@ -163,9 +169,9 @@ workflow:            # a single pipeline per MR
     - if: $CI_COMMIT_BRANCH || $CI_COMMIT_TAG || $CI_PIPELINE_SOURCE == "schedule"
 
 include:
-  - component: $CI_SERVER_FQDN/ci/ansible-collection-ci/ansible-collection@1.1.0
+  - component: $CI_SERVER_FQDN/ci/ansible-collection-ci/ansible-collection@1.2.0
     inputs:
-      runner-image: nexus.corp.local:8443/corp/ci-tools-image:2026.10
+      runner-image: nexus.corp.local:8443/corp/ci-tools-image:2026.10.1
       ansible-core-versions: ['2.16', '2.18']       # quoted
       ansible-core-optional: '2.20'                 # AAP 2.7, non-blocking
       # target-ees: >-                              # matrix checked against the EEs (same series required)
@@ -192,8 +198,9 @@ include:
 | Stage | Fails if... | What to do |
 |---|---|---|
 | Changelog | a PR/MR changes the collection without a fragment | add `changelogs/fragments/*.yml`, or the `skip-changelog` label |
-| Certification | forbidden sanity ignore, non-compliant `.ansible-lint`, unsupported `requires_ansible`, galaxy-importer or ansible-lint production failure | see `reports/certification/guards.txt`, `galaxy-importer.log` |
-| Lint / Docs / Build | yamllint, ansible-lint, antsibull-docs, galaxy-importer errors | reports in `reports/` (build artifacts) |
+| Certification (in Package & certify) | forbidden sanity ignore, non-compliant `.ansible-lint`, unsupported `requires_ansible`, galaxy-importer or ansible-lint production failure | see `reports/certification/guards.txt`, `galaxy-importer.log` |
+| Lint / Docs | yamllint, ansible-lint, antsibull-docs errors | reports in `reports/` (build artifacts) |
+| Package & certify | `ansible-galaxy collection build` or galaxy-importer errors (runs after all the tests) | `reports/galaxy-importer/`, the tarball in the build artifacts (`dist/`) |
 | Security scan | HIGH or CRITICAL finding | fix it, or a justified `# nosec: <rule> reason="..."` |
 | Spotter | Spotter findings | the build becomes UNSTABLE (not failed); see `reports/spotter/` |
 | Sanity / units / integration | ansible-test | JUnit in the *Tests* tab |

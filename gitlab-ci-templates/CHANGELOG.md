@@ -5,6 +5,18 @@ SemVer releases, tags `x.y.z` (format required by the CI/CD catalog), aligned wi
 * minor: new input (with a default), new job disabled by default, compatible tool update;
 * major: input renamed/removed, changed default (e.g. ansible-core matrix), major version of `aci`.
 
+## 1.2.0 - 2026-10-28
+
+* Same order as the Jenkins library, each block only if the previous one passed (`needs`): static analysis
+  (`aci-lint`, `aci-docs`, `aci-changelog`, `aci-security`, `aci-spotter`) → ansible-test → container tests →
+  `aci-build` (build + importer) → `aci-certification` → `aci-publish` (tags). `aci-build` and
+  `aci-certification` move from `stage-static` to `stage-test`; `aci-certification` certifies the `dist/`
+  artifact of `aci-build`, which `aci-publish` publishes (no rebuild). The test jobs no longer start before
+  the static analysis has passed.
+* Inputs unchanged (only the descriptions of `stage-static` / `stage-test`). Default `runner-image`
+  `ci-tools-image:2026.10.1`, `ACI_EXPECTED_VERSION` 1.2.0 (`aci` 1.2.0).
+* `tests/render.py --order` (execution order from `needs`/stages) and order checks in `tests/validate.sh`.
+
 ## 1.1.0 - 2026-10-23
 
 * All comments, input descriptions and messages translated to English (no input or behaviour change).

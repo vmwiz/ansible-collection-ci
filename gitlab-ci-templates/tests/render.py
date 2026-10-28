@@ -211,11 +211,38 @@ def jobs(cfg, ctx):
         out.append((name, job, when, cells))
     return out
 
+STAGES = [".pre", "build", "test", "deploy", ".post"]   # GitLab default stages (what the component expects)
+
+def order(cfg, ctx):
+    """Execution level of each job of the context, like GitLab: a job with `needs` waits for the needed
+    jobs present in the pipeline (a missing non-optional one is an error), a job without `needs` waits
+    for every job of the previous stages. Returns {job: level}."""
+    active = {name: job for name, job, _, _ in jobs(cfg, ctx)}
+    level = {}
+    def lv(name, seen=()):
+        if name in level: return level[name]
+        if name in seen: die(f"needs cycle through {name}")
+        job = active[name]
+        if "needs" in job:
+            deps = []
+            for n in job["needs"]:
+                n = n if isinstance(n, dict) else {"job": n}
+                if n["job"] in active: deps.append(n["job"])
+                elif not n.get("optional"): die(f"{name}: needs '{n['job']}', absent from the {ctx} pipeline")
+        else:
+            st = STAGES.index(job.get("stage", "test"))
+            deps = [o for o, j in active.items() if STAGES.index(j.get("stage", "test")) < st]
+        level[name] = 1 + max((lv(d, seen + (name,)) for d in deps), default=-1)
+        return level[name]
+    for name in active: lv(name)
+    return level
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("template"); ap.add_argument("-i", "--inputs"); ap.add_argument("--out")
     ap.add_argument("--jobs", choices=CONTEXTS); ap.add_argument("--job"); ap.add_argument("--context", choices=CONTEXTS)
     ap.add_argument("--cell", default="{}"); ap.add_argument("--emit")
+    ap.add_argument("--order", choices=CONTEXTS, help="print '<level> <job>' (execution order from needs/stages)")
     a = ap.parse_args()
     given = yaml.safe_load(open(a.inputs)) if a.inputs else {}
     given = (given or {}).get("inputs", given or {})
@@ -230,6 +257,9 @@ def main():
             for c in cells:
                 label = name + (f" [{', '.join(f'{k}={v}' for k, v in c.items())}]" if c else "")
                 print(f"{job.get('stage', 'test'):7} {label:45} tags={tags:16} allow_failure={json.dumps(af)} when={when}")
+    if a.order:
+        for name, lvl in sorted(order(body, a.order).items(), key=lambda x: (x[1], x[0])):
+            print(lvl, name)
     if a.job:
         job = expand(body, a.job)
         env = dict(CONTEXTS[a.context or "branch"]); env.update(job.get("variables", {})); env.update(json.loads(a.cell))

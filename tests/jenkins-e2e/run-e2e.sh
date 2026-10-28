@@ -24,10 +24,10 @@ set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd); repo=$(cd "$here/../.." && pwd)
 W=${W:-/tmp/jk}; OUT=${OUT:-$W/out}
 JENKINS_IMAGE=${JENKINS_IMAGE:-docker.io/jenkins/jenkins:2.580.1-jdk21}
-CI_TOOLS_IMAGE=${CI_TOOLS_IMAGE:-localhost/corp/ci-tools-image:2026.10}
-podman rm -f jenkins runner-1 >/dev/null 2>&1 || true
+CI_TOOLS_IMAGE=${CI_TOOLS_IMAGE:-localhost/corp/ci-tools-image:2026.10.1}
+podman rm -f jenkins runner-1 fake-galaxy >/dev/null 2>&1 || true
 sudo pkill -f "agent.jar.*-name builder-1" 2>/dev/null || true
-sudo rm -rf "$W"; mkdir -p "$W/repos" "$W/src" "$W/shared" "$W/builder" "$OUT"; chmod 777 "$W/shared"
+sudo rm -rf "$W"; mkdir -p "$W/repos" "$W/src" "$W/shared" "$W/builder" "$W/galaxy" "$OUT"; chmod 777 "$W/shared" "$W/galaxy"
 
 # 1) local git repositories
 # bench substitutions applied to every copy of the library (see the header)
@@ -75,6 +75,13 @@ ansibleCollectionPipeline(spoterEndpoint: 'https://spotter.corp.local/api')"
      git init -q -b main && git add -A && git -c user.name=ci -c user.email=ci@corp.local commit -qm demo &&
      git clone -q --bare . "$W/repos/$c.git")
   done
+  # corp-demo-release: Multibranch job on tag 1.0.0 (= galaxy.yml version) of the lite collection:
+  # Package & certify then Publish (unstash) to the fake Galaxy
+  cp -r "$repo/example-collection/corp.demo" "$W/src/corp-demo-release"
+  (cd "$W/src/corp-demo-release" && rm -rf dist reports tests/output tests/unit tests/integration extensions/molecule
+   printf '%s\n' "$lib" "ansibleCollectionPipeline(galaxyPublishUrl: 'http://fake-galaxy:8000/')" > Jenkinsfile
+   git init -q -b main && git add -A && git -c user.name=ci -c user.email=ci@corp.local commit -qm release &&
+   git -c user.name=ci -c user.email=ci@corp.local tag -a 1.0.0 -m 1.0.0 && git clone -q --bare . "$W/repos/mb-corp-demo-release.git")
 else
   # DEV=1: NO global library. Copy of the whole ansible-collection-ci working tree (branch master, tag v2.1.1),
   # loaded by the jobs with the `library` step + libraryPath, like example-collection/corp.demo/Jenkinsfile.dev
@@ -112,6 +119,9 @@ podman network exists jk || podman network create jk >/dev/null
 podman run -d --name jenkins --network jk -p 127.0.0.1:8080:8080 \
   -v "$W/repos:/repos:ro" -v "$W/shared:/var/jenkins_home/shared" ${DEV:+-e ACI_E2E_NO_GLOBAL_LIBRARY=1} \
   localhost/ansible-ci-e2e-jenkins >/dev/null
+# fake Galaxy v3 (Nexus ansible-hosted stand-in) for the Publish stage of corp-demo-release
+podman run -d --name fake-galaxy --network jk --user 1001:0 -v "$here/fake-galaxy.py:/fake-galaxy.py:ro" -v "$W/galaxy:/galaxy" \
+  --entrypoint python3 "$CI_TOOLS_IMAGE" -u /fake-galaxy.py /galaxy 8000 >/dev/null
 # rootless podman: the bind-mounted repositories look root-owned inside the containers -> safe.directory
 podman exec jenkins git config --global --add safe.directory '*'
 until curl -sf http://127.0.0.1:8080/login >/dev/null && [ -s "$W/shared/runner-1.secret" ]; do sleep 3; done
@@ -141,17 +151,28 @@ echo "agents connected"
 crumb() { curl -sf -c "$W/cookies" "$J/crumbIssuer/api/json" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d["crumbRequestField"]+":"+d["crumb"])'; }
 result() { curl -sf "$J/job/$1/1/api/json" 2>/dev/null | python3 -c 'import json,sys; d=json.load(sys.stdin); print("RUNNING" if d["building"] else d["result"])' 2>/dev/null || echo PENDING; }
 if [ -n "${DEV:-}" ]; then dflt="corp-demo-dev corp-demo-dev-tag corp-demo-dev-positional"
-else dflt="corp-demo corp-demo-lite corp-demo-params corp-demo-spotter corp-demo-typo"; fi
+else dflt="corp-demo corp-demo-lite corp-demo-params corp-demo-spotter corp-demo-typo corp-demo-release/job/1.0.0"; fi
 jobs=${JOBS:-$dflt}
-for j in $jobs; do curl -sf -b "$W/cookies" -H "$(crumb)" -X POST "$J/job/$j/build" >/dev/null; done
+for j in $jobs; do
+  case $j in */job/*)   # multibranch: index the parent first, then build the discovered tag
+    curl -sf -b "$W/cookies" -H "$(crumb)" -X POST "$J/job/${j%%/*}/build?delay=0" >/dev/null
+    until curl -sf "$J/job/$j/api/json" >/dev/null; do sleep 3; done ;;
+  esac
+  curl -sf -b "$W/cookies" -H "$(crumb)" -X POST "$J/job/$j/build" >/dev/null
+done
 for j in $jobs; do
   while :; do r=$(result "$j"); case $r in RUNNING|PENDING) sleep 15 ;; *) break ;; esac; done
-  curl -sf "$J/job/$j/1/consoleText" > "$OUT/$j.log"
-  curl -sf "$J/job/$j/1/testReport/api/json?tree=passCount,failCount,skipCount" > "$OUT/$j.tests.json" 2>/dev/null || true
-  curl -sf "$J/job/$j/1/artifact/pod-rendered.yaml" > "$OUT/$j.pod.yaml" 2>/dev/null || rm -f "$OUT/$j.pod.yaml"
-  img=$([ -s "$OUT/$j.pod.yaml" ] && /opt/ansible-ci/bin/python -c 'import sys,yaml; d=yaml.safe_load(open(sys.argv[1])); print(*[c.get("image","(cloud default)") for c in d["spec"]["containers"]], sep=" | ")' "$OUT/$j.pod.yaml" || echo "-")
+  n=${j%%/*}
+  curl -sf "$J/job/$j/1/consoleText" > "$OUT/$n.log"
+  curl -sf "$J/job/$j/1/testReport/api/json?tree=passCount,failCount,skipCount" > "$OUT/$n.tests.json" 2>/dev/null || true
+  curl -sf "$J/job/$j/1/artifact/pod-rendered.yaml" > "$OUT/$n.pod.yaml" 2>/dev/null || rm -f "$OUT/$n.pod.yaml"
+  img=$([ -s "$OUT/$n.pod.yaml" ] && /opt/ansible-ci/bin/python -c 'import sys,yaml; d=yaml.safe_load(open(sys.argv[1])); print(*[c.get("image","(cloud default)") for c in d["spec"]["containers"]], sep=" | ")' "$OUT/$n.pod.yaml" || echo "-")
   echo "$j #1: $r   pod images: $img"
+  # stage order + one tarball (build = importer = certification = archived = published)
+  up=; case $j in */job/*) up=$W/galaxy ;; esac   # tag build: the tarball must also be the uploaded one
+  python3 "$here/check-run.py" "$J/job/$j/1" "$OUT/$n.log" ${up:+"$up"} 2>&1 | sed 's/^/    /' || true
 done | tee "$OUT/results.txt"
+podman logs fake-galaxy 2>&1 | grep '^uploaded' | sed 's/^/fake Galaxy: /' | tee -a "$OUT/results.txt" || true
 # script approvals: anything the sandbox rejected and queued for an administrator
 # shellcheck disable=SC2016  # Groovy script, not shell
 curl -sf -b "$W/cookies" -H "$(crumb)" --data-urlencode 'script=import org.jenkinsci.plugins.scriptsecurity.scripts.ScriptApproval

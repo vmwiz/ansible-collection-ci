@@ -24,4 +24,10 @@ rc=0; ACI_CORE=2.22 ACI_PRERELEASE=2.22 ACI_PRERELEASE_EXIT_CODE=3 "$aci" publis
 [ $rc -eq 3 ] && ok "pre-release: code 3" || ko "pre-release: code $rc"
 rc=0; ACI_CORE=2.21 ACI_PRERELEASE_EXIT_CODE=3 "$aci" publish >/dev/null 2>&1 || rc=$?
 [ $rc -eq 2 ] && ok "stable series: original code" || ko "stable series: code $rc"
+# importer / certification / publish never rebuild: without dist/ they stop before creating any venv
+for c in importer certification publish; do
+  out=$(ACI_GALAXY_PUBLISH_URL=x ACI_GALAXY_TOKEN=y "$aci" "$c" 2>&1) && ko "$c without dist/ accepted" ||
+    { grep -q "dist/corp-demo-1.0.0.tar.gz missing: run 'aci build' first" <<<"$out" && ok "$c without dist/ refused" || ko "$c without dist/: $out"; }
+done
+[ ! -d "$ACI_CACHE/venv" ] && ok "no venv created before the dist/ check" || ko "venv created before the dist/ check"
 exit $fail

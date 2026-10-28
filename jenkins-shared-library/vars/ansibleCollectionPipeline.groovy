@@ -9,7 +9,9 @@
  *
  * All the work is done by the `aci` CLI baked into the ci-tools-image and the ansible-builder VM
  * (/opt/ansible-ci/bin/aci). The OpenShift pod comes from resources/ansible-ci/pod.yaml.
- * Optional stages (units, integration, Molecule) run only when the matching directory exists.
+ * Order: static analysis > ansible-test > container tests > package & certify > publish (tags); each block
+ * runs only if the previous one passed. Optional stages (units, integration, Molecule) run only when the
+ * matching directory exists.
  */
 import groovy.transform.Field
 
@@ -21,7 +23,7 @@ import groovy.transform.Field
     imageMirror         : 'nexus.corp.local:8444',                                   // Docker proxy of quay.io
     spotterEndpoint     : '',                                                        // private Spotter API; empty = Spotter skipped
     spotterCacert       : '/etc/pki/tls/certs/ca-bundle.crt',                        // CA bundle for the Spotter API
-    ciToolsImage        : 'nexus.corp.local:8443/corp/ci-tools-image:2026.10',       // image of the 'runner' container (= aci version)
+    ciToolsImage        : 'nexus.corp.local:8443/corp/ci-tools-image:2026.10.1',       // image of the 'runner' container (= aci version)
     builderLabel        : 'ansible-builder',                                         // Jenkins label of the Podman VMs
     spotterCredentialsId: 'spotter-api-token',                                       // Jenkins credential ID (Secret text)
     galaxyCredentialsId : 'nexus-galaxy-hosted-token',                               // Jenkins credential ID (Secret text)
@@ -53,23 +55,21 @@ def call(Map config = [:]) {
             SPOTTER_CACERT         = "${cfg.spotterCacert}"
         }
         stages {
-            stage('Static checks') {
+            // 1) the source only; Spotter findings make the build UNSTABLE, any other failure stops here
+            stage('Static analysis') {
                 parallel {
                     stage('Lint') {
                         agent { kubernetes { yaml podYaml; defaultContainer 'runner' } }
-                        steps { aci 'lint'; aci 'docs' }
+                        steps { aci 'lint' }
                     }
-                    stage('Certification') {
+                    stage('Docs') {
                         agent { kubernetes { yaml podYaml; defaultContainer 'runner' } }
-                        steps { aci 'certification' }
+                        steps { aci 'docs' }
                     }
-                    stage('Build') {
+                    stage('Changelog fragment') {
+                        when { beforeAgent true; changeRequest() }
                         agent { kubernetes { yaml podYaml; defaultContainer 'runner' } }
-                        steps {
-                            aci 'build'
-                            archiveArtifacts artifacts: 'dist/*.tar.gz', fingerprint: true
-                            aci 'importer'
-                        }
+                        steps { aci 'changelog-check' }
                     }
                     stage('Security scan') {
                         agent { kubernetes { yaml podYaml; defaultContainer 'runner' } }
@@ -79,7 +79,6 @@ def call(Map config = [:]) {
                         when { beforeAgent true; expression { cfg.spotterEndpoint } }
                         agent { kubernetes { yaml podYaml; defaultContainer 'runner' } }
                         steps {
-                            // findings make the build UNSTABLE, not FAILED
                             catchError(buildResult: 'UNSTABLE', stageResult: 'UNSTABLE') {
                                 withCredentials([string(credentialsId: cfg.spotterCredentialsId, variable: 'SPOTTER_TOKEN')]) {
                                     aci 'spotter', 'reports/spotter/*.xml'
@@ -87,17 +86,12 @@ def call(Map config = [:]) {
                             }
                         }
                     }
-                    stage('Changelog fragment') {
-                        when { beforeAgent true; changeRequest() }
-                        agent { kubernetes { yaml podYaml; defaultContainer 'runner' } }
-                        steps { aci 'changelog-check' }
-                    }
                 }
             }
+            // 2) AAP 2.6 ships ansible-core 2.16 and 2.18; 2.20 (AAP 2.7) is also required by the
+            // Red Hat certification sanity. All on Python 3.12, the Python of the AAP EEs.
             stage('ansible-test') {
                 matrix {
-                    // AAP 2.6 ships ansible-core 2.16 and 2.18; 2.20 (AAP 2.7) is also required by the
-                    // Red Hat certification sanity. All on Python 3.12, the Python of the AAP EEs.
                     axes { axis { name 'ACI_CORE'; values '2.16', '2.18', '2.20' } }
                     agent { kubernetes { yaml podYaml; defaultContainer 'runner' } }
                     stages {
@@ -109,8 +103,8 @@ def call(Map config = [:]) {
                     }
                 }
             }
-            // Integration and Molecule need Podman: they run on the ansible-builder VM. The `when` is
-            // checked on the agent (after checkout), so the stage shows as skipped when the directory is absent.
+            // 3) Podman: on the ansible-builder VM. The `when` is checked on the agent (after checkout),
+            // so the stage shows as skipped when the directory is absent.
             stage('Container tests') {
                 parallel {
                     stage('Integration') {
@@ -126,11 +120,23 @@ def call(Map config = [:]) {
                     }
                 }
             }
+            // 4) built ONCE, after all the tests; importer, certification and Publish use this very tarball
+            stage('Package & certify') {
+                agent { kubernetes { yaml podYaml; defaultContainer 'runner' } }
+                steps {
+                    aci 'build'
+                    archiveArtifacts artifacts: 'dist/*.tar.gz', fingerprint: true
+                    stash name: 'dist', includes: 'dist/*.tar.gz'
+                    aci 'importer'
+                    aci 'certification'
+                }
+            }
+            // 5) tags only: the certified tarball from the stash, no rebuild
             stage('Publish') {
                 when { beforeAgent true; buildingTag() }
                 agent { kubernetes { yaml podYaml; defaultContainer 'runner' } }
                 steps {
-                    aci 'build'
+                    unstash 'dist'
                     withCredentials([string(credentialsId: cfg.galaxyCredentialsId, variable: 'ACI_GALAXY_TOKEN')]) {
                         aci 'publish'
                     }

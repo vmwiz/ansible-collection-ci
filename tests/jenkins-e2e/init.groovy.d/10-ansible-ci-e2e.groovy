@@ -15,6 +15,8 @@ import jenkins.model.JenkinsLocationConfiguration
 import jenkins.plugins.git.GitSCMSource
 import jenkins.plugins.git.traits.BranchDiscoveryTrait
 import jenkins.plugins.git.traits.TagDiscoveryTrait
+import jenkins.branch.BranchSource
+import org.jenkinsci.plugins.workflow.multibranch.WorkflowMultiBranchProject
 import org.jenkinsci.plugins.plaincredentials.impl.StringCredentialsImpl
 import org.jenkinsci.plugins.workflow.cps.CpsScmFlowDefinition
 import org.jenkinsci.plugins.workflow.job.WorkflowJob
@@ -65,6 +67,17 @@ new File('/repos').eachFileMatch(~/corp-demo.*\.git/) { f ->
     WorkflowJob job = j.createProject(WorkflowJob, name)
     job.setDefinition(new CpsScmFlowDefinition(scm, 'Jenkinsfile'))
     job.save()
+}
+// mb-<name>.git: Multibranch Pipeline <name> discovering TAGS only (tag builds exercise Publish;
+// tags are never built automatically, run-e2e.sh starts the build)
+new File('/repos').eachFileMatch(~/mb-.*\.git/) { f ->
+    String name = f.name - 'mb-' - '.git'
+    j.getItem(name)?.delete()
+    def mb = j.createProject(WorkflowMultiBranchProject, name)
+    def tags = new GitSCMSource("file:///repos/${f.name}")
+    tags.setTraits([new TagDiscoveryTrait()])
+    mb.getSourcesList().add(new BranchSource(tags))
+    mb.save()
 }
 j.save()
 println 'ansible-ci e2e: bench configured'

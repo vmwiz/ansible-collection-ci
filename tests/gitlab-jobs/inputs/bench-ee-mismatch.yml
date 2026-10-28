@@ -1,5 +1,5 @@
 # Bench input set: target EEs whose series differ from ansible-core-versions (the introspection must fail).
 inputs:
-  runner-image: localhost/corp/ci-tools-image:2026.10
+  runner-image: localhost/corp/ci-tools-image:2026.10.1
   ansible-core-versions: ['2.16', '2.18', '2.20']
   target-ees: localhost/fake-ee-minimal-rhel9:2.16 localhost/fake-ee-minimal-rhel9:2.18

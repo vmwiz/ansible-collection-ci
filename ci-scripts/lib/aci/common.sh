@@ -157,6 +157,15 @@ aci_tarball() {
   echo "$ACI_DIST/$ns-$name-$version.tar.gz"
 }
 
+# Tarball produced by `aci build`, for importer / certification / publish: they NEVER rebuild it, so the
+# certified and the published artifact are the same file. Stops if it is missing; logs its sha256.
+aci_dist_tarball() {
+  local t; t=$(aci_tarball)
+  [ -f "$t" ] || die "$t missing: run 'aci build' first (importer, certification and publish never rebuild; in CI, pass dist/ from the build step)"
+  log "tarball $(basename "$t") sha256 $(sha256sum "$t" | cut -d' ' -f1)"
+  echo "$t"
+}
+
 # ---- ansible_collections/<ns>/<name> tree ----------------------------------------------------------
 # aci_prepare_tree <kind>: copies the collection out of the repository (otherwise ansible-test trusts git
 # and skips targets) and installs NEXT TO IT the Galaxy dependencies of that kind (lint, sanity, units...).

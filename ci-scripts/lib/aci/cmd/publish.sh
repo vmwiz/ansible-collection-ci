@@ -3,9 +3,8 @@
 main() {
   [ -n "${ACI_GALAXY_PUBLISH_URL:-}" ] || die "ACI_GALAXY_PUBLISH_URL not set (e.g. Nexus ansible-hosted)"
   [ -n "${ACI_GALAXY_TOKEN:-}" ] || die "ACI_GALAXY_TOKEN missing (CI credential)"
+  local tarball; tarball=$(aci_dist_tarball) || exit $?   # the certified artifact, never rebuilt
   aci_venv core >/dev/null
-  local tarball; tarball=$(aci_tarball)
-  [ -f "$tarball" ] || die "$tarball missing: run 'aci build' first"
   # Git tag (Jenkins TAG_NAME, GitLab CI_COMMIT_TAG) = galaxy.yml version, with or without 'v'
   local tag=${ACI_RELEASE_TAG:-${TAG_NAME:-${CI_COMMIT_TAG:-}}} version
   read -r _ _ version < <(aci_meta)

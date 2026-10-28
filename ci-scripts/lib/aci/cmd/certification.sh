@@ -1,6 +1,8 @@
 # shellcheck shell=bash
 # help:   certification   Red Hat certification checks (partner-certification-checker, share/aci/certification.env)
-# Usage: aci certification [static]       guards + galaxy-importer + ansible-lint --profile=production
+# Usage: aci certification [static]       guards + galaxy-importer on the `aci build` tarball (dist/, never
+#                                         rebuilt: the certified artifact is the published one)
+#                                         + ansible-lint --profile=production
 #        aci certification sanity-cores   sanity series to test (ACI_CERT_SANITY_CORES filtered by requires_ansible)
 # The sanity part then runs per series: ACI_CORE=<series> ACI_PYTHON=3.12 aci sanity
 cert_sanity_cores() {
@@ -19,6 +21,7 @@ main() {
     static) ;;
     *) die "aci certification [static|sanity-cores]" ;;
   esac
+  local tarball; tarball=$(aci_dist_tarball) || exit $?
   local out=$ACI_REPORTS/certification; rm -rf "$out"; mkdir -p "$out"
   log "reference: partner-certification-checker $ACI_CERT_CHECKER_VERSION (galaxy-importer $ACI_CERT_GALAXY_IMPORTER, ansible-lint $ACI_CERT_ANSIBLE_LINT, ansible-core $ACI_CERT_ANSIBLE_CORE, Python $ACI_CERT_PYTHON)"
 
@@ -44,14 +47,15 @@ main() {
   # 1) explicit guards (sanity ignores, .ansible-lint, requires_ansible)
   run python "$ACI_PY/cert_guards.py" "$ACI_SRC" | tee "$out/guards.txt" || rc=1
 
-  # 2) galaxy-importer, with the checker configuration (CHECK_REQUIRED_TAGS=True, RUN_ANSIBLE_LINT=False)
+  # 2) galaxy-importer, with the checker configuration (CHECK_REQUIRED_TAGS=True, RUN_ANSIBLE_LINT=False),
+  #    on the existing tarball (the checker builds from a git clone: same content, but here no second build)
   local cfg=$ACI_WORK/cert-galaxy-importer.cfg; mkdir -p "$ACI_WORK"
   printf '[galaxy-importer]\nCHECK_REQUIRED_TAGS=%s\nRUN_ANSIBLE_LINT=%s\n' \
     "$ACI_CERT_IMPORTER_CHECK_REQUIRED_TAGS" "$ACI_CERT_IMPORTER_RUN_ANSIBLE_LINT" > "$cfg"
   aci_prepare_tree lint
   log "galaxy-importer $ACI_CERT_GALAXY_IMPORTER (CHECK_REQUIRED_TAGS=$ACI_CERT_IMPORTER_CHECK_REQUIRED_TAGS, RUN_ANSIBLE_LINT=$ACI_CERT_IMPORTER_RUN_ANSIBLE_LINT) -> $out/galaxy-importer.log"
-  (cd "$out" && GALAXY_IMPORTER_CONFIG=$cfg run python -m galaxy_importer.main \
-      --git-clone-path "$ACI_TREE_DEST" --output-path "$out" > "$out/galaxy-importer.log" 2>&1) || rc=1
+  (cd "$out" && GALAXY_IMPORTER_CONFIG=$cfg run python -m galaxy_importer.main "$tarball" \
+      > "$out/galaxy-importer.log" 2>&1) || rc=1
   tail -n 5 "$out/galaxy-importer.log" >&2
 
   # 3) ansible-lint --profile=production (Galaxy dependencies already installed next to it: --offline)

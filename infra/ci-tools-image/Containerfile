@@ -9,7 +9,7 @@
 # Build context = ROOT of the ansible-collection-ci repository (the image embeds ci-scripts/):
 #   podman build -f infra/ci-tools-image/Containerfile \
 #     --build-arg BASE_IMAGE=nexus.corp.local:8443/corp/hub/python3:3.12 \
-#     -t nexus.corp.local:8443/corp/ci-tools-image:2026.10 .
+#     -t nexus.corp.local:8443/corp/ci-tools-image:2026.10.1 .
 #
 # One Python per image = the Python of the base image. It is the ansible-test controller Python
 # (`ansible-test --venv`) and hosts the /opt/ansible-ci tooling venv. Controller ranges

@@ -7,6 +7,17 @@ Jenkinsfiles use `@Library('ansible-ci@v2')` (fixes and compatible changes autom
 * minor: compatible change (e.g. a stage that only runs when the repository opts in);
 * major: behaviour change (matrix, new blocking stage, removed stage).
 
+## v2.3.0 - 2026-10-28
+
+* New stage order, each block only if the previous one passed: **Static analysis** (Lint, Docs,
+  Changelog fragment, Security scan, Spotter) → **ansible-test** → **Container tests** → **Package &
+  certify** → **Publish**. The collection is built once, after all the tests: `aci build`, tarball archived
+  with fingerprint and stashed (`dist`), then `aci importer` and `aci certification` on that tarball;
+  Publish (tags) unstashes it and publishes it without rebuilding. Lint and Docs are now two stages.
+* Default `ciToolsImage`: `nexus.corp.local:8443/corp/ci-tools-image:2026.10.1` (`aci` 1.2.0: certification
+  on the built tarball; importer, certification and publish stop if `dist/` is missing).
+* Parameters unchanged.
+
 ## v2.2.0 - 2026-10-26
 
 * No pipeline change. The ci-tools-image (default `ciToolsImage`) is now built `FROM`

@@ -1,4 +1,4 @@
-# GitLab CI/CD component "ansible-collection" - ansible-ci 1.1.0
+# GitLab CI/CD component "ansible-collection" - ansible-ci 1.2.0
 # Test/validation pipeline for an Ansible collection (airgapped, Nexus, AAP 2.6), running the same `aci`
 # scripts (installed in the ci-tools-image under /opt/ansible-ci) as the Jenkins shared library.
 # GitLab >= 17.0 (components and inputs GA). Usage: see README.md / USER-GUIDE.md.
@@ -6,21 +6,27 @@
 #     - component: $CI_SERVER_FQDN/ci/ansible-collection-ci/ansible-collection@1
 # Secrets (masked CI/CD variables, never inputs): ACI_GALAXY_TOKEN (publication, protected variable),
 # SPOTTER_TOKEN (private Spotter).
+# Order (same as the Jenkins library), each block only if the previous one passed (`needs`):
+#   1. static analysis of the source: aci-lint, aci-docs, aci-changelog (MR), aci-security, aci-spotter
+#   2. ansible-test: aci-sanity-*, aci-units-*, aci-optional-cores, aci-certification-sanity (+ aci-ee-units)
+#   3. container tests (ansible-builder VM): aci-integration, aci-molecule
+#   4. package & certify: aci-build (build + importer) -> aci-certification, on the SAME dist/ tarball
+#   5. aci-publish (tags): the certified dist/ artifact of aci-build, no rebuild
 spec:
   inputs:
     # ---- GitLab stages (GitLab default stages: build, test, deploy) ----
     stage-static:
       default: build
-      description: Stage of the static checks (lint, docs, build, certification, security...).
+      description: Stage of the static analysis of the source (lint, docs, changelog, security, Spotter).
     stage-test:
       default: test
-      description: Stage of ansible-test (sanity, units, integration) and molecule.
+      description: Stage of ansible-test (sanity, units), container tests (integration, molecule), then build + certification.
     stage-publish:
       default: deploy
       description: Publication stage (on tags).
     # ---- images and runners ----
     runner-image:
-      default: nexus.corp.local:8443/corp/ci-tools-image:2026.10
+      default: nexus.corp.local:8443/corp/ci-tools-image:2026.10.1
       description: ci-tools-image (contains /opt/ansible-ci/bin/aci and Python 3.12). Its tag pins the scripts.
     runner-tags:
       type: array
@@ -104,7 +110,7 @@ spec:
   interruptible: true
   variables:
     ACI: $[[ inputs.aci-path ]]
-    ACI_EXPECTED_VERSION: "1.1.0"
+    ACI_EXPECTED_VERSION: "1.2.0"
     # "series" prefix: an input on its own would be interpolated as an ARRAY (refused in variables)
     ACI_CORE_VERSIONS: "series $[[ inputs.ansible-core-versions ]]"   # without the optional ones (default series)
     ACI_PRERELEASE: "$[[ inputs.ansible-core-prerelease ]]"
@@ -134,11 +140,52 @@ spec:
   extends: .aci-base
   tags: $[[ inputs.builder-tags ]]   # persistent VM: ~/.cache/ansible-ci stays there between jobs
 
-# Test jobs wait for the EE introspection when it exists (otherwise they start right away).
-.aci-needs-ee:
+# Order of the blocks (`needs`, optional: a job disabled by its input is simply not waited for; a failure
+# with allow_failure, e.g. Spotter or a pre-release series, does not block). artifacts: false = only an
+# ordering, the reports of the previous jobs are not downloaded.
+# 2) ansible-test: after the static analysis (and the EE introspection, whose matrix it reads).
+.aci-after-static:
   needs:
-    - job: aci-ee-introspect
-      optional: true
+    - {job: aci-ee-introspect, optional: true}
+    - {job: aci-lint, optional: true, artifacts: false}
+    - {job: aci-docs, optional: true, artifacts: false}
+    - {job: aci-changelog, optional: true, artifacts: false}
+    - {job: aci-security, optional: true, artifacts: false}
+    - {job: aci-spotter, optional: true, artifacts: false}
+# 3) container tests: after ansible-test.
+.aci-after-tests:
+  needs:
+    - {job: aci-ee-introspect, optional: true}
+    - {job: aci-lint, optional: true, artifacts: false}
+    - {job: aci-docs, optional: true, artifacts: false}
+    - {job: aci-changelog, optional: true, artifacts: false}
+    - {job: aci-security, optional: true, artifacts: false}
+    - {job: aci-spotter, optional: true, artifacts: false}
+    - {job: aci-sanity-venv, optional: true, artifacts: false}
+    - {job: aci-sanity-docker, optional: true, artifacts: false}
+    - {job: aci-units-venv, optional: true, artifacts: false}
+    - {job: aci-units-docker, optional: true, artifacts: false}
+    - {job: aci-optional-cores, optional: true, artifacts: false}
+    - {job: aci-certification-sanity, optional: true, artifacts: false}
+    - {job: aci-ee-units, optional: true, artifacts: false}
+# 4) package & certify: after the container tests.
+.aci-after-container-tests:
+  needs:
+    - {job: aci-ee-introspect, optional: true}
+    - {job: aci-lint, optional: true, artifacts: false}
+    - {job: aci-docs, optional: true, artifacts: false}
+    - {job: aci-changelog, optional: true, artifacts: false}
+    - {job: aci-security, optional: true, artifacts: false}
+    - {job: aci-spotter, optional: true, artifacts: false}
+    - {job: aci-sanity-venv, optional: true, artifacts: false}
+    - {job: aci-sanity-docker, optional: true, artifacts: false}
+    - {job: aci-units-venv, optional: true, artifacts: false}
+    - {job: aci-units-docker, optional: true, artifacts: false}
+    - {job: aci-optional-cores, optional: true, artifacts: false}
+    - {job: aci-certification-sanity, optional: true, artifacts: false}
+    - {job: aci-ee-units, optional: true, artifacts: false}
+    - {job: aci-integration, optional: true, artifacts: false}
+    - {job: aci-molecule, optional: true, artifacts: false}
 
 # ---------------------------------------------------------------------------------------------- .pre
 aci-ee-introspect:
@@ -153,7 +200,7 @@ aci-ee-introspect:
   rules:
     - if: '"$[[ inputs.target-ees ]]" != ""'
 
-# ------------------------------------------------------------------------------------ static checks
+# --------------------------------------------------------------------------------- static analysis
 aci-changelog:
   extends: .aci-base
   stage: $[[ inputs.stage-static ]]
@@ -165,16 +212,6 @@ aci-changelog:
     - $ACI changelog-check
   rules:
     - if: '"$[[ inputs.changelog-check ]]" == "true" && $CI_MERGE_REQUEST_IID'
-
-aci-certification:
-  extends: .aci-base
-  stage: $[[ inputs.stage-static ]]
-  needs: []
-  script:
-    - $ACI certification
-    - $ACI certification sanity-cores > reports/certification/sanity-cores.txt
-  rules:
-    - if: '"$[[ inputs.certification ]]" == "true"'
 
 aci-lint:
   extends: .aci-base
@@ -193,18 +230,6 @@ aci-docs:
     - $ACI docs
   rules:
     - if: '"$[[ inputs.docs ]]" == "true"'
-
-aci-build:
-  extends: .aci-base
-  stage: $[[ inputs.stage-static ]]
-  needs: []
-  script:
-    - $ACI build
-    - if [ "$[[ inputs.galaxy-importer ]]" = true ]; then $ACI importer; fi
-  artifacts:
-    paths: [dist/, reports/]
-  rules:
-    - if: '"$[[ inputs.build ]]" == "true"'
 
 aci-security:
   extends: .aci-base
@@ -257,7 +282,7 @@ aci-spotter:
     - if: $CI_COMMIT_TAG || $CI_PIPELINE_SOURCE == "schedule" || $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 
 .aci-sanity:
-  extends: .aci-needs-ee
+  extends: .aci-after-static
   stage: $[[ inputs.stage-test ]]
   parallel:
     matrix:
@@ -271,7 +296,7 @@ aci-spotter:
       junit: reports/sanity-*/junit/*.xml
 
 .aci-units:
-  extends: .aci-needs-ee
+  extends: .aci-after-static
   stage: $[[ inputs.stage-test ]]
   parallel:
     matrix:
@@ -318,9 +343,8 @@ aci-units-docker:
 
 # Optional series (e.g. 2.20 = AAP 2.7): non-blocking, in venv mode.
 aci-optional-cores:
-  extends: .aci-base
+  extends: [.aci-base, .aci-after-static]
   stage: $[[ inputs.stage-test ]]
-  needs: []
   allow_failure: true
   variables: {ACI_TEST_MODE: venv}
   script:
@@ -340,9 +364,8 @@ aci-optional-cores:
 # Certification sanity (Python 3.12, stable-2.16/2.18/2.20 filtered by requires_ansible) on the
 # series that the matrix does not already cover with Python 3.12.
 aci-certification-sanity:
-  extends: .aci-base
+  extends: [.aci-base, .aci-after-static]
   stage: $[[ inputs.stage-test ]]
-  needs: []
   variables: {ACI_TEST_MODE: venv, ACI_PYTHON: "3.12"}
   script:
     - |
@@ -365,9 +388,8 @@ aci-certification-sanity:
     - if: '"$[[ inputs.certification ]]" == "true" && "$[[ inputs.certification-sanity ]]" == "true" && "$[[ inputs.sanity ]]" == "true"'
 
 aci-integration:
-  extends: .aci-builder
+  extends: [.aci-builder, .aci-after-tests]
   stage: $[[ inputs.stage-test ]]
-  needs: [{job: aci-ee-introspect, optional: true}]
   variables: {ACI_TEST_MODE: docker}
   parallel:
     matrix:
@@ -381,9 +403,8 @@ aci-integration:
     - if: '"$[[ inputs.integration ]]" == "true"'
 
 aci-molecule:
-  extends: .aci-builder
+  extends: [.aci-builder, .aci-after-tests]
   stage: $[[ inputs.stage-test ]]
-  needs: []
   variables:
     ACI_MOLECULE_IMAGES: $[[ inputs.molecule-images ]]
   script:
@@ -394,9 +415,8 @@ aci-molecule:
 
 # UNTESTED POC (no access to registry.redhat.io on the bench): units inside each target EE.
 aci-ee-units:
-  extends: .aci-builder
+  extends: [.aci-builder, .aci-after-static]
   stage: $[[ inputs.stage-test ]]
-  needs: [aci-ee-introspect]
   allow_failure: true
   script:
     - for image in $[[ inputs.target-ees ]]; do $ACI ee-units "$image"; done
@@ -406,11 +426,52 @@ aci-ee-units:
   rules:
     - if: '"$[[ inputs.ee-tests ]]" == "true" && "$[[ inputs.target-ees ]]" != ""'
 
+# ------------------------------------------------------------------------------ package & certify
+# Built ONCE, after all the tests. aci-certification and aci-publish use this dist/ artifact (no rebuild).
+aci-build:
+  extends: [.aci-base, .aci-after-container-tests]
+  stage: $[[ inputs.stage-test ]]
+  script:
+    - $ACI build
+    - if [ "$[[ inputs.galaxy-importer ]]" = true ]; then $ACI importer; fi
+  artifacts:
+    paths: [dist/, reports/]
+  rules:
+    - if: '"$[[ inputs.build ]]" == "true"'
+
+aci-certification:
+  extends: .aci-base
+  stage: $[[ inputs.stage-test ]]
+  needs:   # aci-build: its dist/ artifact is the tarball certified here; the others: ordering only
+    - {job: aci-build, optional: true}
+    - {job: aci-ee-introspect, optional: true}
+    - {job: aci-lint, optional: true, artifacts: false}
+    - {job: aci-docs, optional: true, artifacts: false}
+    - {job: aci-changelog, optional: true, artifacts: false}
+    - {job: aci-security, optional: true, artifacts: false}
+    - {job: aci-spotter, optional: true, artifacts: false}
+    - {job: aci-sanity-venv, optional: true, artifacts: false}
+    - {job: aci-sanity-docker, optional: true, artifacts: false}
+    - {job: aci-units-venv, optional: true, artifacts: false}
+    - {job: aci-units-docker, optional: true, artifacts: false}
+    - {job: aci-optional-cores, optional: true, artifacts: false}
+    - {job: aci-certification-sanity, optional: true, artifacts: false}
+    - {job: aci-ee-units, optional: true, artifacts: false}
+    - {job: aci-integration, optional: true, artifacts: false}
+    - {job: aci-molecule, optional: true, artifacts: false}
+  script:
+    # build: false -> no aci-build job: the tarball is built here (and never published)
+    - ls dist/*.tar.gz >/dev/null 2>&1 || $ACI build
+    - $ACI certification
+    - $ACI certification sanity-cores > reports/certification/sanity-cores.txt
+  rules:
+    - if: '"$[[ inputs.certification ]]" == "true"'
+
 # ---------------------------------------------------------------------------------------- publish
 aci-publish:
   extends: .aci-base
   stage: $[[ inputs.stage-publish ]]
-  dependencies: [aci-build]   # no needs: waits for ALL previous stages to succeed
+  dependencies: [aci-build]   # no needs: waits for ALL previous stages; dist/ = the certified tarball
   script:
     - $ACI publish
   artifacts:
