@@ -9,8 +9,9 @@ This guide is for the teams that develop collections. For the technical details,
   bound of 2.19 is refused, because 2.19 was only a technology preview.
 * `galaxy.yml`:
   * `tags:` must contain at least one tag (required by the certification);
-  * `build_ignore: [Jenkinsfile, .gitlab-ci.yml, reports, dist]`.
-* `.gitignore`: `reports/`, `dist/`, `tests/output/`.
+  * `build_ignore: [Jenkinsfile, .gitlab-ci.yml]` (`reports` and `dist` may stay listed: since 2.4.0 the
+    CI writes them outside the collection, see "Workspace layout" in §4).
+* `.gitignore`: `tests/output/`.
 * Python modules, plugins and tests: add the header required by the 2.16 sanity and by the certification:
   ```python
   from __future__ import (absolute_import, division, print_function)
@@ -79,7 +80,7 @@ ansibleCollectionPipeline(spotterEndpoint: 'https://spotter.corp.local/api', spo
 | `imageMirror` | `nexus.corp.local:8444` | Docker proxy of quay.io (ansible-test and Molecule images) |
 | `spotterEndpoint` | empty | Private Spotter API; empty = Spotter stage skipped |
 | `spotterCacert` | `/etc/pki/tls/certs/ca-bundle.crt` | CA bundle for the Spotter API |
-| `ciToolsImage` | `nexus.corp.local:8443/corp/ci-tools-image:2026.10.1` | Image the pod stages run in (it pins the `aci` version) |
+| `ciToolsImage` | `nexus.corp.local:8443/corp/ci-tools-image:2026.10.2` | Image the pod stages run in (it pins the `aci` version) |
 | `builderLabel` | `ansible-builder` | Label of the Podman agents (Integration, Molecule) |
 | `spotterCredentialsId` | `spotter-api-token` | ID of the Jenkins *Secret text* credential with the Spotter token |
 | `galaxyCredentialsId` | `nexus-galaxy-hosted-token` | ID of the Jenkins *Secret text* credential allowed to publish |
@@ -169,9 +170,9 @@ workflow:            # a single pipeline per MR
     - if: $CI_COMMIT_BRANCH || $CI_COMMIT_TAG || $CI_PIPELINE_SOURCE == "schedule"
 
 include:
-  - component: $CI_SERVER_FQDN/ci/ansible-collection-ci/ansible-collection@1.2.0
+  - component: $CI_SERVER_FQDN/ci/ansible-collection-ci/ansible-collection@1.3.0
     inputs:
-      runner-image: nexus.corp.local:8443/corp/ci-tools-image:2026.10.1
+      runner-image: nexus.corp.local:8443/corp/ci-tools-image:2026.10.2
       ansible-core-versions: ['2.16', '2.18']       # quoted
       ansible-core-optional: '2.20'                 # AAP 2.7, non-blocking
       # target-ees: >-                              # matrix checked against the EEs (same series required)
@@ -206,8 +207,23 @@ include:
 | Sanity / units / integration | ansible-test | JUnit in the *Tests* tab |
 | Publish | the tag differs from the `galaxy.yml` version | tag `1.2.3` (or `v1.2.3`) = `version: 1.2.3` |
 
-Locally, in the ci-tools-image: `ACI_CORE=2.18 /opt/ansible-ci/bin/aci sanity` (or `lint`,
-`certification`...).
+**Workspace layout** (since 2.4.0). The CI workspace has three sibling directories: `src/` (your
+collection, the only tree any linter, scanner, test or `ansible-galaxy collection build` sees),
+`reports/` and `dist/` (the built tarball). Jenkins checks out into `src/`; GitLab clones at the project
+root as usual and the jobs work on a `src/` git worktree of the same commit. The artifacts keep their
+names: `reports/**` and `dist/*.tar.gz`. Nothing changes in your repository.
+
+**Locally**, in the ci-tools-image, from your collection checkout:
+
+```bash
+ACI_CORE=2.18 /opt/ansible-ci/bin/aci sanity     # or lint, docs, build, certification...
+/opt/ansible-ci/bin/aci info                     # shows where reports and dist go
+```
+
+Reports and the tarball go to `/tmp/aci-<uid>/<collection dir>/{reports,dist}`, never into the checkout.
+To get them next to it, use the CI layout (`git clone <repo> ws/src`, then run `aci` from `ws/`: it picks
+`src/` and writes `ws/reports`, `ws/dist`) or set `ACI_REPORTS`/`ACI_DIST` to directories outside the
+checkout. `aci` refuses a reports, dist or work directory inside the collection.
 
 ## 5. Versions
 

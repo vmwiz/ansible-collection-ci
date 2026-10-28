@@ -1,6 +1,6 @@
 # Bench (no GitLab): local ci-tools-image, devpi behind nexus.corp.local, local simulated EEs.
 inputs:
-  runner-image: localhost/corp/ci-tools-image:2026.10.1
+  runner-image: localhost/corp/ci-tools-image:2026.10.2
   ansible-core-optional: '2.20'
   target-ees: localhost/fake-ee-minimal-rhel9:2.16 localhost/fake-ee-minimal-rhel9:2.18
   test-mode: venv

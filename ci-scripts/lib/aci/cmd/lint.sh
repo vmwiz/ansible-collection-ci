@@ -11,5 +11,5 @@ main() {
   aci_prepare_tree lint
   # --offline: neither installs requirements.yml nor refreshes schemas (Internet)
   (cd "$ACI_SRC" && ANSIBLE_COLLECTIONS_PATH=$ACI_TREE_BASE run ansible-lint --offline \
-      --exclude dist --exclude reports --exclude tests/output "$@")
+      --exclude tests/output "$@")   # reports/ and dist/ are outside ACI_SRC (common.sh)
 }

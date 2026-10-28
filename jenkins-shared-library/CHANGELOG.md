@@ -7,6 +7,23 @@ Jenkinsfiles use `@Library('ansible-ci@v2')` (fixes and compatible changes autom
 * minor: compatible change (e.g. a stage that only runs when the repository opts in);
 * major: behaviour change (matrix, new blocking stage, removed stage).
 
+## v2.4.0 - 2026-10-28
+
+* Workspace layout: the collection is checked out into `src/` (`checkoutToSubdirectory('src')`) and `aci`
+  writes `reports/` and `dist/` beside it (`ACI_SRC=src`, `ACI_REPORTS=reports`, `ACI_DIST=dist`). No
+  linter, scanner, test or `ansible-galaxy collection build` sees the reports or a previous tarball. Fixes
+  the SARIF and certification reports (and the previous tarball) shipped in the tarball of a collection
+  whose `build_ignore` lacked `reports`/`dist`, then linted by galaxy-importer's ansible-lint.
+* Artifact, JUnit and stash paths unchanged (`reports/**`, `dist/*.tar.gz`). Parameters unchanged.
+* Default `ciToolsImage`: `nexus.corp.local:8443/corp/ci-tools-image:2026.10.2` (`aci` 1.3.0: `ACI_SRC` defaults to `./src` when `./src/galaxy.yml` exists, else the current
+  directory; `ACI_REPORTS`/`ACI_DIST` default to the siblings of `src/`, else to `/tmp/aci-<uid>/<name>/`
+  (local runs, shown by `aci info`); any of them inside `ACI_SRC` is refused. The `--exclude reports/dist`
+  options of ansible-lint, yamllint, the security scanner and Spotter are removed (they never see them).
+  `ci-scripts/tests/layout.sh` poisons `reports/` and `dist/` and checks that lint, docs, security-scan
+  and build ignore them.).
+* A Jenkinsfile that runs `aci` itself (outside the library) from the checkout root now gets its reports
+  in `/tmp/aci-<uid>/<name>/` unless it sets `ACI_REPORTS`/`ACI_DIST` outside the checkout.
+
 ## v2.3.0 - 2026-10-28
 
 * New stage order, each block only if the previous one passed: **Static analysis** (Lint, Docs,

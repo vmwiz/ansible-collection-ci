@@ -1,6 +1,6 @@
 # Inbound Jenkins agent (websocket) = ci-tools-image + Java 21: stands in for the OpenShift pod
 # (in production: pod from resources/ansible-ci/pod.yaml, jnlp + runner containers; the bench has no cluster).
-ARG CI_TOOLS_IMAGE=localhost/corp/ci-tools-image:2026.10.1
+ARG CI_TOOLS_IMAGE=localhost/corp/ci-tools-image:2026.10.2
 FROM ${CI_TOOLS_IMAGE}
 USER 0
 RUN microdnf -y install --setopt=install_weak_deps=0 --nodocs java-21-openjdk-headless && microdnf clean all

@@ -25,6 +25,10 @@ The pipeline only orchestrates; the work is done by the `aci` CLI (`../ci-script
 the ci-tools-image and on the ansible-builder VM as `/opt/ansible-ci/bin/aci`. Every stage is one or two
 `aci <command>` calls; reports (`reports/**`) are archived and JUnit files published.
 
+Workspace layout (2.4.0): the collection is checked out into `src/` (`checkoutToSubdirectory`), `aci`
+writes `reports/` and `dist/` beside it (`ACI_SRC=src`, `ACI_REPORTS=reports`, `ACI_DIST=dist`). No tool
+sees the reports or the tarball; artifact and stash paths are unchanged (`reports/**`, `dist/*.tar.gz`).
+
 ## Parameters
 
 All optional. An unknown key stops the build at once with the list of allowed keys.
@@ -37,7 +41,7 @@ All optional. An unknown key stops the build at once with the list of allowed ke
 | `imageMirror` | `nexus.corp.local:8444` | Docker proxy of quay.io for ansible-test / Molecule images (`ACI_IMAGE_MIRROR`) |
 | `spotterEndpoint` | `''` | Private Spotter API (`SPOTTER_ENDPOINT`); **empty = Spotter stage skipped** |
 | `spotterCacert` | `/etc/pki/tls/certs/ca-bundle.crt` | CA bundle for the Spotter API (`SPOTTER_CACERT`) |
-| `ciToolsImage` | `nexus.corp.local:8443/corp/ci-tools-image:2026.10.1` | Image of the `runner` container of the pod; its tag pins the `aci` version |
+| `ciToolsImage` | `nexus.corp.local:8443/corp/ci-tools-image:2026.10.2` | Image of the `runner` container of the pod; its tag pins the `aci` version |
 | `builderLabel` | `ansible-builder` | Label of the Podman VM agents (Integration, Molecule) |
 | `spotterCredentialsId` | `spotter-api-token` | ID of the Secret text credential holding the Spotter token (`SPOTTER_TOKEN`) |
 | `galaxyCredentialsId` | `nexus-galaxy-hosted-token` | ID of the Secret text credential allowed to publish (`ACI_GALAXY_TOKEN`) |

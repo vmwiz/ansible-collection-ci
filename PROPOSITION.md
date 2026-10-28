@@ -63,7 +63,7 @@ Everything runs airgapped behind Nexus: OpenShift `restricted-v2` pods and an `a
 ```mermaid
 flowchart LR
   subgraph repo[ansible-collection-ci repository - CI maintainers]
-    aci[ci-scripts/: bash CLI aci 1.2.0<br/>+ Python helpers, pinned versions,<br/>certification.env]
+    aci[ci-scripts/: bash CLI aci 1.3.0<br/>+ Python helpers, pinned versions,<br/>certification.env]
     jsl[jenkins-shared-library/<br/>vars/ansibleCollectionPipeline.groovy]
     glc[gitlab-ci-templates/<br/>templates/ansible-collection]
     img[infra/ci-tools-image<br/>UBI 9 + py3.12 + aci]
@@ -183,6 +183,23 @@ container tests; `aci-publish` (`stage-publish`) takes the `dist/` artifact of `
 Reports are written to `reports/<stage>-<series>/`: JUnit (published by Jenkins `junit` and GitLab
 `artifacts:reports:junit`), `importer_result.json`, SARIF, `guards.txt`, `matrix.txt`; all archived.
 
+**Workspace layout (2.4.0).** The workspace holds three siblings: `src/` (the collection), `reports/` and
+`dist/`. Every tool (yamllint, antsibull-changelog, ansible-lint, antsibull-docs, security scanner,
+Spotter, ansible-test, Molecule, certification guards, `ansible-galaxy collection build`) only sees
+`src/**`, so no tool can lint, scan or package a report or a previous tarball, whatever the collection's
+`build_ignore`, `.ansible-lint` or `.gitignore` say. Jenkins: `checkoutToSubdirectory('src')`. GitLab: the
+runner clone stays at `CI_PROJECT_DIR` (artifacts must be under it, and `GIT_CLONE_PATH` cannot point
+outside it), and each job adds a `src/` git worktree of the same commit (tracked files only, shares `.git`,
+no fetch). `aci` (1.3.0): `ACI_SRC` defaults to `./src` when `./src/galaxy.yml` exists, else the current
+directory; `ACI_REPORTS`/`ACI_DIST` default to the siblings of `src/`, else to `/tmp/aci-<uid>/<name>/`;
+it refuses any of them inside `ACI_SRC`.
+
+Why: before 2.4.0 `reports/` and `dist/` were inside the collection. ansible-lint and the scanners
+excluded them explicitly, but `ansible-galaxy collection build` only honours the collection's own
+`build_ignore`: a collection without `reports`/`dist` there shipped `reports/security/*.sarif`, the
+certification reports and the previous tarball, and galaxy-importer then ran ansible-lint on the extracted
+tarball, SARIF included. 2.3.0 made it systematic by building after all the scans.
+
 ## 5. Red Hat certification (reference: partner-certification-checker v6.0.0)
 
 All versions are in **one file**, `ci-scripts/share/aci/certification.env` (overridable with
@@ -234,7 +251,7 @@ Unknown keys stop the build before any agent is allocated.
 | Timeouts, history | pipeline (fixed) | 90 min per build, 20 builds kept |
 | Nexus | parameters `galaxyUrl`, `galaxyPublishUrl`, `pypiEndpoint`, `imageMirror` | → `ACI_GALAXY_URL`, `ACI_GALAXY_PUBLISH_URL`, `ACI_PYPI_ENDPOINT`, `ACI_IMAGE_MIRROR` |
 | Spotter | parameters `spotterEndpoint` (empty = stage skipped), `spotterCacert` | → `SPOTTER_ENDPOINT`, `SPOTTER_CACERT` |
-| ci-tools-image (= `aci` version) | parameter `ciToolsImage`, substituted into `resources/ansible-ci/pod.yaml` | `nexus.corp.local:8443/corp/ci-tools-image:2026.10.1` |
+| ci-tools-image (= `aci` version) | parameter `ciToolsImage`, substituted into `resources/ansible-ci/pod.yaml` | `nexus.corp.local:8443/corp/ci-tools-image:2026.10.2` |
 | Podman agents | parameter `builderLabel` | `ansible-builder` |
 | Secrets | parameters `spotterCredentialsId`, `galaxyCredentialsId` = IDs of Jenkins Secret text credentials | `spotter-api-token`, `nexus-galaxy-hosted-token` |
 | Library version | *Manage Jenkins* global library | default `v2` |
@@ -252,16 +269,17 @@ way as the Jenkins library is possible but not done in 2.x.
 
 ### 7.1 Rules
 * **SemVer** per deliverable:
-  * Jenkins library: tags `vX.Y.Z` + **moving tag `v2`** (the library default version). Current: **2.1.0**.
-  * `aci` scripts and ci-tools-image: `ci-scripts/VERSION` = image tag `aci-X.Y.Z`. Current: **1.1.0**.
-  * GitLab component: tags `X.Y.Z` (catalog format). Current: **1.1.0** (`ACI_EXPECTED_VERSION` = `ci-scripts/VERSION`).
+  * Jenkins library: tags `vX.Y.Z` + **moving tag `v2`** (the library default version). Current: **2.4.0**.
+  * `aci` scripts and ci-tools-image: `ci-scripts/VERSION` = image tag `aci-X.Y.Z`. Current: **1.3.0** (`2026.10.2`).
+  * GitLab component: tags `X.Y.Z` (catalog format). Current: **1.3.0** (`ACI_EXPECTED_VERSION` = `ci-scripts/VERSION`).
 * **Patch**: fix. **Minor**: compatible change (new stage that only runs when the repository opts in,
   compatible tool update). **Major**: changed default behaviour (e.g. matrix change for AAP 2.7), removed
   stage, or incompatible `aci` change.
 * `CHANGELOG.md` in each deliverable.
 
 ### 7.2 Release procedure (CI maintainers)
-1. Change `ci-scripts/`, then run `ci-scripts/tests/smoke.sh`, `ci-scripts/tests/guards.sh` and shellcheck.
+1. Change `ci-scripts/`, then run `ci-scripts/tests/smoke.sh`, `ci-scripts/tests/guards.sh`, shellcheck and,
+   in the ci-tools-image, `ci-scripts/tests/layout.sh` (real tools, needs the package index).
 2. Run `tools/sync.sh --check`, `gitlab-ci-templates/tests/validate.sh`, then the bench
    (`tests/jenkins-e2e/run-e2e.sh`, `tests/gitlab-jobs/run-jobs.sh`, see `tests/README.md`).
 3. Update `VERSION`, the `CHANGELOG.md` files, `ACI_EXPECTED_VERSION` and the default `runner-image` of the
@@ -284,7 +302,8 @@ which removes `tools/sync.sh`'s scripts copy and the risk of two diverging versi
 ## 8. Onboarding a collection
 
 1. `meta/runtime.yml`: `requires_ansible: '>=2.16.0'` (or `>=2.18.0`); `galaxy.yml`: `tags` (mandatory),
-   `build_ignore: [Jenkinsfile, Jenkinsfile.dev, .gitlab-ci.yml, reports, dist]`; `.gitignore`: `reports/ dist/ tests/output/`.
+   `build_ignore: [Jenkinsfile, Jenkinsfile.dev, .gitlab-ci.yml]`; `.gitignore`: `tests/output/` (reports and
+   dist are outside the collection since 2.4.0).
 2. Python files: header `from __future__ import (absolute_import, division, print_function)` +
    `__metaclass__ = type` (2.16 sanity and certification).
 3. `.ansible-lint`: `profile: production` (or absent); `changelogs/config.yaml` (antsibull-changelog);
@@ -470,6 +489,24 @@ the airgapped runs, UID `1000680000:0`, `--cap-drop ALL`, `no-new-privileges`, c
 
 ### 14.3 Jenkins end-to-end results
 
+**2.4.0 (28/10/2026)**: workspace layout `src/` + `reports/` + `dist/` (`checkoutToSubdirectory('src')`),
+ci-tools-image `2026.10.2` (`aci` 1.3.0, stand-in base). `check-run.py` also checks that the archived
+tarball has no `reports/`, `dist/` or SARIF member and that every artifact is under `reports/` or `dist/`.
+
+| Job | Result | What it shows |
+|---|---|---|
+| `corp-demo` | **SUCCESS**, 261 s | checkout in `corp-demo/src` and `corp-demo@2/src`; 4 blocks in order; tarball 53 members, none from `reports/`/`dist/`; 93 artifacts; same sha256 build = importer = certification = archived; JUnit 78 (the informational MEDIUM finding) |
+| `corp-demo-lite` (`@v2.1.0`) | **SUCCESS**, 225 s | auto-skip of units, Integration, Molecule still works with the `src/` paths |
+| `corp-demo-params` | **SUCCESS**, 251 s | same as `corp-demo` with the overridden parameters |
+| `corp-demo-spotter` | **UNSTABLE** (expected), 241 s | Spotter UNSTABLE does not stop the next blocks |
+| `corp-demo-typo` | **FAILURE** (expected), 3 s | unknown parameter, no stage |
+| `corp-demo-release` » `1.0.0` (tag build) | **SUCCESS**, 234 s | Publish from the stash: build = importer = certification = publish = archived = uploaded (sha256 `b6664e86…`) |
+
+No script approval. `ci-scripts/tests/layout.sh` in the `2026.10.2` image: `reports/` and `dist/` poisoned
+(YAML failing yamllint/ansible-lint, `curl | sh` task, SARIF), `galaxy.yml` without `reports`/`dist` in
+`build_ignore`: lint, docs, security-scan, build pass and never mention them, the tarball has none of them
+(the same poison inside `src/` makes lint and security-scan fail and lands in the tarball).
+
 **2.3.0 (28/10/2026)**: new order (static analysis → ansible-test → container tests → package & certify →
 publish), ci-tools-image `2026.10.1` (`aci` 1.2.0, stand-in base). Order checked from `wfapi/describe`
 (every executed stage of a block ends before the next block starts); tarball sha256 compared across steps.
@@ -580,7 +617,9 @@ as root; on the real VM the playbook enables linger for the CI user instead.
 9. **Integration targets** that run `apt`/`dnf`/`pip`: `--pypi-endpoint` covers pip; for `apt`/`dnf`,
    configurable `setup_*` roles (Nexus mirrors) or derived images (not shipped).
 10. **Docker socket = root on the agent**: ansible-test starts a `--privileged --pid host` container.
-11. **`build_ignore`** in `galaxy.yml`: exclude `Jenkinsfile`, `.gitlab-ci.yml`, `reports/`, `dist/`.
+11. ✔ **`build_ignore`** in `galaxy.yml`: exclude `Jenkinsfile`, `.gitlab-ci.yml`. Until 2.3.0 a missing
+    `reports`/`dist` entry put the SARIF and certification reports and the previous tarball in the published
+    tarball (and galaxy-importer's ansible-lint scanned them); 2.4.0 writes them outside `src/`.
 12. **galaxy-importer** writes `importer_result.json` to the current directory. `aci importer` runs it in
     `reports/galaxy-importer/`.
 13. ✔ **Rootless podman without cgroup delegation**: the ansible-test (systemd) containers die at start

@@ -4,8 +4,9 @@ main() {
   aci_venv security >/dev/null
   local out=$ACI_REPORTS/security src=$ACI_WORK/security-src rc=0
   mkdir -p "$out"; rm -rf "$src"; mkdir -p "$src"
-  # the scanner has no exclude option: scan a clean copy
-  tar -C "$ACI_SRC" --exclude=./.git --exclude=./reports --exclude=./dist --exclude=./tests/output -cf - . | tar -C "$src" -xf -
+  # the scanner has no exclude option: scan a copy without .git and a local tests/output
+  # (reports/ and dist/ are outside ACI_SRC, see common.sh)
+  tar -C "$ACI_SRC" --exclude=./.git --exclude=./tests/output -cf - . | tar -C "$src" -xf -
   local -a common=(ansible-security-scanner --directory "$src" --jobs 4)
   [ -n "${ACI_SECURITY_SEVERITY:-}" ] && common+=(--severity "$ACI_SECURITY_SEVERITY")   # display filter
   run "${common[@]}" --format sarif --output "$out/ansible-security-scanner.sarif" --exit-zero

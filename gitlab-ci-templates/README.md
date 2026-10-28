@@ -15,7 +15,7 @@ include:
 
 `../USER-GUIDE.md` also contains the complete example (`examples/complete.gitlab-ci.yml`).
 
-* **Version**: `@1` = latest published 1.x (recommended); `@1.2.0` = pinned version; avoid `@~latest`.
+* **Version**: `@1` = latest published 1.x (recommended); `@1.3.0` = pinned version; avoid `@~latest`.
   Tags follow `x.y.z` (SemVer). The compatibility rule is described in `CHANGELOG.md`.
 * **Requirements**: GitLab ≥ 17.0 (components and `spec:inputs` GA). No newer feature is used (no
   `$[[ component.version ]]`, which needs 18.7, and no `split` function).
@@ -24,7 +24,7 @@ include:
   ```yaml
   include:
     - project: ci/ansible-collection-ci
-      ref: 1.2.0
+      ref: 1.3.0
       file: /templates/ansible-collection/template.yml
       inputs: {ansible-core-optional: '2.20'}
   ```
@@ -54,8 +54,8 @@ A GitLab component can only ship YAML, so the scripts have to arrive another way
 **Recommendation: A.**
 * The component sets `ACI_EXPECTED_VERSION`. `aci` **refuses** an image whose major version differs
   and **reports** a minor version drift.
-* Publish the ci-tools-image with **two tags**: the calendar tag (`2026.10.1`, `YYYY.MM[.N]`) and the scripts version tag
-  (`aci-1.2.0`).
+* Publish the ci-tools-image with **two tags**: the calendar tag (`2026.10.2`, `YYYY.MM[.N]`) and the scripts version tag
+  (`aci-1.3.0`).
 * For every component release, update the default `runner-image` in the same commit.
   `tests/validate.sh` checks consistency with `ci-scripts/VERSION`.
 
@@ -76,6 +76,16 @@ A GitLab component can only ship YAML, so the scripts have to arrive another way
 | `aci-certification` | test | `certification`. Guards + galaxy-importer 0.4.39 on the `aci-build` tarball + ansible-lint 26.4.0 `--profile=production`. With `build: false` it builds the tarball itself (nothing is published then) |
 | `aci-publish` | deploy | Tag, inputs `publish` and `build`. Waits for all previous stages to succeed; publishes the `dist/` artifact of `aci-build` (no rebuild) |
 
+Workspace layout (1.3.0): the runner clones at `CI_PROJECT_DIR` as usual; every job starts with
+`rm -rf src && git worktree prune && git worktree add --quiet --force --detach src HEAD` and runs `aci` with
+`ACI_SRC=src`, `ACI_REPORTS=reports`, `ACI_DIST=dist`. `src/` (tracked files of the same commit, no fetch)
+is the only tree the tools see; `reports/` and `dist/` stay under `CI_PROJECT_DIR`, as GitLab artifacts
+require, with unchanged names. Rejected: `GIT_CLONE_PATH` (it can only move `CI_PROJECT_DIR` itself, so the
+artifacts would be inside the clone again) and moving the clone into `src/` (breaks fetch on persistent
+shell runners, and would sweep the extracted artifacts of earlier jobs into it). Caveats: the jobs define
+`before_script`, so a `default: before_script` of the including project is not applied to them; git
+submodules are not checked out in `src/`.
+
 Order (same as the Jenkins library), each block only if the previous one passed: 1. static analysis
 (`aci-lint`, `aci-docs`, `aci-changelog`, `aci-security`, `aci-spotter`) → 2. ansible-test (sanity, units,
 optional series, certification sanity, EE units) → 3. container tests (`aci-integration`, `aci-molecule`) →
@@ -92,7 +102,7 @@ also wait for the EE introspection, when it exists. A failing series listed in `
 | `stage-static` | string | `'build'` | Stage of the static analysis of the source (lint, docs, changelog, security, Spotter). |
 | `stage-test` | string | `'test'` | Stage of ansible-test (sanity, units), container tests (integration, molecule), then build + certification. |
 | `stage-publish` | string | `'deploy'` | Publication stage (on tags). |
-| `runner-image` | string | `'nexus.corp.local:8443/corp/ci-tools-image:2026.10.1'` | ci-tools-image (contains /opt/ansible-ci/bin/aci and Python 3.12). Its tag pins the scripts. |
+| `runner-image` | string | `'nexus.corp.local:8443/corp/ci-tools-image:2026.10.2'` | ci-tools-image (contains /opt/ansible-ci/bin/aci and Python 3.12). Its tag pins the scripts. |
 | `runner-tags` | array | `['ansible-runner']` | Tags of the Kubernetes/OpenShift runner (restricted-v2 pods, no container engine). |
 | `builder-tags` | array | `['ansible-builder']` | Tags of the shell runner on the ansible-builder VM (podman) - docker mode, integration, molecule, EE. |
 | `aci-path` | string | `'/opt/ansible-ci/bin/aci'` | Path of the aci scripts in the ci-tools-image and on the ansible-builder VM. |

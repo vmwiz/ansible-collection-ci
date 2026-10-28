@@ -1,6 +1,6 @@
 # ansible-ci: CI libraries for Ansible collections (Jenkins + GitLab, airgapped/Nexus, AAP 2.6)
 
-Jenkins library **2.3.0**, `aci` scripts and GitLab component **1.2.0**. A collection has no CI code,
+Jenkins library **2.4.0**, `aci` scripts and GitLab component **1.3.0**. A collection has no CI code,
 only two or three lines:
 
 ```groovy
@@ -43,7 +43,7 @@ tests/jenkins-e2e/run-e2e.sh
 tests/gitlab-jobs/run-jobs.sh tests/gitlab-jobs/inputs/bench.yml branch "aci-lint aci-certification"
 # 4. ci-tools-image (its tag is the aci version used by Jenkins and GitLab)
 podman build -f infra/ci-tools-image/Containerfile --build-arg BASE_IMAGE=<registry>/corp/hub/python3:3.12 \
-  -t nexus.corp.local:8443/corp/ci-tools-image:2026.10.1 .
+  -t nexus.corp.local:8443/corp/ci-tools-image:2026.10.2 .
 ```
 
 ## `aci` locally (ci-tools-image or VM)

@@ -2,8 +2,9 @@
 """TEST ONLY: checks one bench build. 1) stage order from wfapi/describe (pipeline-stage-view): every
 executed stage of a block ends before any stage of the next block starts; 2) the tarball sha256 logged
 by aci build / importer / certification / publish, the archived artifact and the fake Galaxy upload are
-all the same. Usage: check-run.py <build-url> <console.log> [galaxy-upload-dir]"""
-import hashlib, json, os, re, sys, urllib.request
+all the same; 3) layout: the archived tarball has no reports/, dist/ or SARIF member and the archived
+artifacts are reports/** and dist/*.tar.gz (siblings of src/, never inside it). Usage: check-run.py <build-url> <console.log> [galaxy-upload-dir]"""
+import hashlib, io, json, os, re, sys, tarfile, urllib.request
 
 url, log = sys.argv[1].rstrip("/"), sys.argv[2]
 upload = sys.argv[3] if len(sys.argv) > 3 else ""
@@ -44,7 +45,12 @@ cmds = re.findall(r"aci \d+\.\d+\.\d+: (build|importer|certification|publish)", 
 shas = {s for _, s in logged}
 if logged:
     name = logged[0][0]
-    art = hashlib.sha256(urllib.request.urlopen(f"{url}/artifact/dist/{name}").read()).hexdigest()
+    data = urllib.request.urlopen(f"{url}/artifact/dist/{name}").read()
+    art = hashlib.sha256(data).hexdigest()
+    members = tarfile.open(fileobj=io.BytesIO(data)).getnames()
+    leaked = [m for m in members if re.search(r"(^|/)(reports|dist)/|\.sarif$", m)]
+    print(f"tarball members: {len(members)}, " + (f"KO leaked: {leaked[:5]}" if leaked else "no reports/, dist/ or SARIF"))
+    ok = ok and not leaked
     shas.add(art)
     line = f"tarball {name}: {len(logged)} aci steps ({', '.join(c for c in cmds if c in ('build', 'importer', 'certification', 'publish'))}) + archived artifact"
     if upload:
@@ -57,4 +63,8 @@ if logged:
             line += " + fake Galaxy upload MISSING"
     print(f"{line}: {'same sha256 ' + art if len(shas) == 1 else 'KO different: ' + str(shas)}")
     ok = ok and len(shas) == 1
+arts = [a["relativePath"] for a in json.load(urllib.request.urlopen(url + "/api/json?tree=artifacts[relativePath]"))["artifacts"]]
+bad = [a for a in arts if not re.match(r"(reports/|dist/[^/]+\.tar\.gz$|pod-rendered\.yaml$)", a)]
+print(f"archived artifacts: {len(arts)}, " + (f"KO outside reports/ and dist/: {bad[:5]}" if bad else "all under reports/ or dist/ (siblings of src/)"))
+ok = ok and not bad
 sys.exit(0 if ok else 1)

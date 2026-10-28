@@ -4,6 +4,9 @@ main() {
   local core; core=$(aci_core)
   echo "aci            $ACI_VERSION ($ACI_HOME)"
   echo "collection     $ACI_SRC"
+  echo "reports        $ACI_REPORTS"
+  echo "dist           $ACI_DIST"
+  echo "work           $ACI_WORK"
   echo "ansible-core   $core ($(aci_core_spec "$core"))"
   echo "python         $(aci_python "$core")"
   echo "mode           $ACI_TEST_MODE"

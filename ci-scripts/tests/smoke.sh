@@ -6,6 +6,7 @@ aci=${ACI_BIN:-$(cd "$(dirname "$0")/.." && pwd)/bin/aci}
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
 mkdir -p "$tmp/c" && printf 'namespace: corp\nname: demo\nversion: 1.0.0\n' > "$tmp/c/galaxy.yml"
 cd "$tmp/c"; export ACI_CACHE=$tmp/cache
+ACI_WORK_EXPECT=${TMPDIR:-/tmp}/aci-$(id -u)/c
 has() { local out; out=$("${@:2}" 2>/dev/null) || return 1; grep -Eq -- "$1" <<<"$out"; }
 fail=0; ok() { echo "ok   $*"; }; ko() { echo "FAIL $*"; fail=1; }
 has '^  sanity ' "$aci" help && ok help || ko help
@@ -24,6 +25,20 @@ rc=0; ACI_CORE=2.22 ACI_PRERELEASE=2.22 ACI_PRERELEASE_EXIT_CODE=3 "$aci" publis
 [ $rc -eq 3 ] && ok "pre-release: code 3" || ko "pre-release: code $rc"
 rc=0; ACI_CORE=2.21 ACI_PRERELEASE_EXIT_CODE=3 "$aci" publish >/dev/null 2>&1 || rc=$?
 [ $rc -eq 2 ] && ok "stable series: original code" || ko "stable series: code $rc"
+# workspace layout: reports/ and dist/ never inside the collection (no linter or scanner can see them)
+w=$("$aci" info 2>/dev/null)
+grep -q "^reports        $ACI_WORK_EXPECT/reports$" <<<"$w" && grep -q "^dist           $ACI_WORK_EXPECT/dist$" <<<"$w" &&
+  ok "local checkout: reports and dist under ACI_WORK" || ko "local layout: $w"
+mkdir -p "$tmp/ws/src" && cp "$tmp/c/galaxy.yml" "$tmp/ws/src/"
+w=$(cd "$tmp/ws" && "$aci" info 2>/dev/null)
+grep -q "^collection     $tmp/ws/src$" <<<"$w" && grep -q "^reports        $tmp/ws/reports$" <<<"$w" &&
+  grep -q "^dist           $tmp/ws/dist$" <<<"$w" && grep -q "^work           ${TMPDIR:-/tmp}/aci-$(id -u)/ws$" <<<"$w" &&
+  ok "CI layout: src/ + sibling reports/ and dist/" || ko "CI layout: $w"
+for v in ACI_REPORTS=reports ACI_DIST=. ACI_WORK=sub/work; do
+  out=$(env "$v" "$aci" info 2>&1) && ko "$v inside the collection accepted" ||
+    { grep -q "is inside the collection" <<<"$out" && ok "$v inside the collection refused" || ko "$v: $out"; }
+done
+(cd "${TMPDIR:-/tmp}/.." && "$aci" --version >/dev/null 2>&1) && ok "--version anywhere (no layout check)" || ko "--version refused outside a collection"
 # importer / certification / publish never rebuild: without dist/ they stop before creating any venv
 for c in importer certification publish; do
   out=$(ACI_GALAXY_PUBLISH_URL=x ACI_GALAXY_TOKEN=y "$aci" "$c" 2>&1) && ko "$c without dist/ accepted" ||

@@ -1,4 +1,4 @@
-# GitLab CI/CD component "ansible-collection" - ansible-ci 1.2.0
+# GitLab CI/CD component "ansible-collection" - ansible-ci 1.3.0
 # Test/validation pipeline for an Ansible collection (airgapped, Nexus, AAP 2.6), running the same `aci`
 # scripts (installed in the ci-tools-image under /opt/ansible-ci) as the Jenkins shared library.
 # GitLab >= 17.0 (components and inputs GA). Usage: see README.md / USER-GUIDE.md.
@@ -26,7 +26,7 @@ spec:
       description: Publication stage (on tags).
     # ---- images and runners ----
     runner-image:
-      default: nexus.corp.local:8443/corp/ci-tools-image:2026.10.1
+      default: nexus.corp.local:8443/corp/ci-tools-image:2026.10.2
       description: ci-tools-image (contains /opt/ansible-ci/bin/aci and Python 3.12). Its tag pins the scripts.
     runner-tags:
       type: array
@@ -110,7 +110,12 @@ spec:
   interruptible: true
   variables:
     ACI: $[[ inputs.aci-path ]]
-    ACI_EXPECTED_VERSION: "1.2.0"
+    # Workspace layout (same as Jenkins): src/ = the collection, the only tree linters, scanners, ansible-test
+    # and the build see; reports/ and dist/ next to it, inside CI_PROJECT_DIR as artifacts require.
+    ACI_SRC: src
+    ACI_REPORTS: reports
+    ACI_DIST: dist
+    ACI_EXPECTED_VERSION: "1.3.0"
     # "series" prefix: an input on its own would be interpolated as an ARRAY (refused in variables)
     ACI_CORE_VERSIONS: "series $[[ inputs.ansible-core-versions ]]"   # without the optional ones (default series)
     ACI_PRERELEASE: "$[[ inputs.ansible-core-prerelease ]]"
@@ -127,6 +132,10 @@ spec:
     ACI_DOCKER_NETWORK: "$[[ inputs.docker-network ]]"
     ACI_COVERAGE: "$[[ inputs.coverage ]]"
     ACI_EE_MATRIX: reports/ee/matrix.txt
+  # The runner clones at the CI_PROJECT_DIR root, where the artifacts of previous jobs (reports/, dist/) are
+  # also extracted: src/ is a git worktree of the same commit (tracked files only, shares .git: no fetch).
+  before_script:
+    - rm -rf src && git worktree prune && git worktree add --quiet --force --detach src HEAD
   # No GitLab `cache:`: it requires a path INSIDE the project, which lint/sanity would then scan (seen
   # on the bench). Venvs go to ~/.cache/ansible-ci; to keep them between jobs, mount a persistent
   # volume there in the Kubernetes runner configuration (see README.md).

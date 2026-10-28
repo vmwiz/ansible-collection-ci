@@ -1,5 +1,5 @@
 inputs:
-  runner-image: nexus.corp.local:8443/corp/ci-tools-image:2026.10.1
+  runner-image: nexus.corp.local:8443/corp/ci-tools-image:2026.10.2
   ansible-core-versions: ['2.16', '2.18']
   ansible-core-optional: '2.20'
   target-ees: hub.corp.local/ansible-automation-platform-26/ee-minimal-rhel9:2.16 hub.corp.local/ansible-automation-platform-26/ee-minimal-rhel9:2.18

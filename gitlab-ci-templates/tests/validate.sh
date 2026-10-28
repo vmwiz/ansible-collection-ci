@@ -58,6 +58,17 @@ print(body["aci-publish"].get("dependencies"), "needs" in body["aci-publish"], b
 PY
 )" = "['aci-build'] False {'job': 'aci-build', 'optional': True}" ]; then ok "publish/certification use the aci-build dist/ artifact"
 else ko "publish/certification artifact"; fi
+# workspace layout: every job works on the src/ worktree, reports/ and dist/ beside it
+bad=""
+for ctx in branch tag mr; do
+  for j in $(python3 tests/render.py "$T" -i tests/inputs/complete.yml --jobs "$ctx" | awk '{print $2}' | sort -u); do
+    python3 tests/render.py "$T" -i tests/inputs/complete.yml --job "$j" --context "$ctx" --emit "$out/job.sh"
+    grep -q '^rm -rf src && git worktree prune && git worktree add --quiet --force --detach src HEAD' "$out/job.sh" &&
+      grep -q '^export ACI_SRC="src"$' "$out/job.sh" && grep -q '^export ACI_REPORTS="reports"$' "$out/job.sh" &&
+      grep -q '^export ACI_DIST="dist"$' "$out/job.sh" || bad="$bad $ctx/$j"
+  done
+done
+if [ -z "$bad" ]; then ok "all jobs: src/ worktree + ACI_SRC=src, ACI_REPORTS=reports, ACI_DIST=dist"; else ko "layout:$bad"; fi
 # expected scripts version = ci-scripts/VERSION
 v=$(cat ../ci-scripts/VERSION 2>/dev/null || true)
 if [ -z "$v" ] || grep -q "ACI_EXPECTED_VERSION: \"$v\"" "$T"; then ok "ACI_EXPECTED_VERSION = ${v:-?}"; else ko "ACI_EXPECTED_VERSION differs from ci-scripts/VERSION ($v)"; fi

@@ -8,10 +8,27 @@ ACI_SHARE=$ACI_HOME/share/aci
 ACI_PY=$ACI_LIB/py
 export ACI_VERSION; ACI_VERSION=$(cat "$ACI_HOME/VERSION" 2>/dev/null || echo dev)
 
-ACI_SRC=$(cd "${ACI_SRC:-$PWD}" && pwd)                # collection root (checkout)
-ACI_REPORTS=${ACI_REPORTS:-$ACI_SRC/reports}
-ACI_DIST=${ACI_DIST:-$ACI_SRC/dist}
-ACI_WORK=${ACI_WORK:-${TMPDIR:-/tmp}/aci-$(id -u)/$(basename "$ACI_SRC")}
+# Workspace layout: reports and the built tarball are NEVER inside the collection, so no linter, scanner,
+# test tree or `ansible-galaxy collection build` can see them.
+#   CI layout (Jenkins, GitLab):  <workspace>/src (collection)  <workspace>/reports  <workspace>/dist
+#   local run in a checkout:      ACI_SRC=.  ->  reports and dist under $ACI_WORK (printed by `aci info`)
+# ACI_SRC: collection root; default ./src when ./src/galaxy.yml exists (CI layout), else the current directory.
+if [ -z "${ACI_SRC:-}" ] && [ -f src/galaxy.yml ]; then ACI_SRC=src; fi
+ACI_SRC=$(cd "${ACI_SRC:-$PWD}" && pwd)
+if [ "$(basename "$ACI_SRC")" = src ]; then _aci_root=$(dirname "$ACI_SRC"); else _aci_root=; fi
+ACI_WORK=$(realpath -m "${ACI_WORK:-${TMPDIR:-/tmp}/aci-$(id -u)/$(basename "${_aci_root:-$ACI_SRC}")}")
+ACI_REPORTS=$(realpath -m "${ACI_REPORTS:-${_aci_root:-$ACI_WORK}/reports}")   # siblings of src/, else in ACI_WORK
+ACI_DIST=$(realpath -m "${ACI_DIST:-${_aci_root:-$ACI_WORK}/dist}")
+unset _aci_root
+# Called by bin/aci before any command (not for help/--version).
+aci_check_layout() {
+  local d
+  for d in "$ACI_REPORTS" "$ACI_DIST" "$ACI_WORK"; do
+    case $d/ in "$ACI_SRC"/*)
+      printf '[aci] ERROR: %s is inside the collection %s: reports, dist and work dirs must be outside it (see ACI_SRC/ACI_REPORTS/ACI_DIST/ACI_WORK)\n' "$d" "$ACI_SRC" >&2; exit 2 ;;
+    esac
+  done
+}
 ACI_CACHE=${ACI_CACHE:-${XDG_CACHE_HOME:-${HOME:-/tmp}/.cache}/ansible-ci}
 ACI_TEST_MODE=${ACI_TEST_MODE:-venv}
 ACI_PRERELEASE=${ACI_PRERELEASE-}
@@ -161,7 +178,7 @@ aci_tarball() {
 # certified and the published artifact are the same file. Stops if it is missing; logs its sha256.
 aci_dist_tarball() {
   local t; t=$(aci_tarball)
-  [ -f "$t" ] || die "$t missing: run 'aci build' first (importer, certification and publish never rebuild; in CI, pass dist/ from the build step)"
+  [ -f "$t" ] || die "$t missing: run 'aci build' first (importer, certification and publish never rebuild; in CI, pass the dist/ directory from the build step)"
   log "tarball $(basename "$t") sha256 $(sha256sum "$t" | cut -d' ' -f1)"
   echo "$t"
 }
@@ -176,7 +193,7 @@ aci_prepare_tree() {
   read -r ns name version < <(aci_meta "$ACI_TREE_BASE/galaxy-deps.yml")
   ACI_TREE_DEST=$ACI_TREE_BASE/ansible_collections/$ns/$name
   mkdir -p "$ACI_TREE_DEST"
-  tar -C "$ACI_SRC" --exclude=./.git --exclude=./reports --exclude=./dist --exclude=./tests/output \
+  tar -C "$ACI_SRC" --exclude=./.git --exclude=./tests/output \
       --exclude=./.nox --exclude=./.tox --exclude=./.venv --exclude=__pycache__ -cf - . | tar -C "$ACI_TREE_DEST" -xf -
   local -a files=("$ACI_TREE_BASE/galaxy-deps.yml" "$ACI_SRC/tests/requirements.yml")
   case $kind in

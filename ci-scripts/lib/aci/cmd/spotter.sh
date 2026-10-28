@@ -5,7 +5,7 @@ main() {
   local out=$ACI_REPORTS/spotter; mkdir -p "$out"
   local -a scan=(spotter --no-color scan --origin ci --no-progress --no-docs-url
                  --ansible-version "${ACI_SPOTTER_ANSIBLE_VERSION:-2.20}"
-                 --exclude-paths dist --exclude-paths reports --exclude-paths tests/output)
+                 --exclude-paths tests/output)   # reports/ and dist/ are outside ACI_SRC
   if [ "${ACI_SPOTTER_EXPORT_ONLY:-false}" = true ]; then
     run "${scan[@]}" --export-payload "$out/spotter-payload.json" "$@" "$ACI_SRC"   # no network call
     return

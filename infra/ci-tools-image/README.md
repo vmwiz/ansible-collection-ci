@@ -6,12 +6,12 @@ Built **on the corporate UBI 9 Python image** `corp/hub/python3:3.12` (`ARG BASE
 ```bash
 # context = repository ROOT (the image embeds ci-scripts/)
 podman build -f infra/ci-tools-image/Containerfile --build-arg BASE_IMAGE=<registry>/corp/hub/python3:3.12 \
-  -t nexus.corp.local:8443/corp/ci-tools-image:2026.10.1 \
+  -t nexus.corp.local:8443/corp/ci-tools-image:2026.10.2 \
   -t nexus.corp.local:8443/corp/ci-tools-image:aci-$(cat ci-scripts/VERSION) .
 ```
-Two tags: calendar `YYYY.MM[.N]` (`2026.10.1`, the default `ciToolsImage` of the Jenkins library and `runner-image` of the
+Two tags: calendar `YYYY.MM[.N]` (`2026.10.2`, the default `ciToolsImage` of the Jenkins library and `runner-image` of the
 GitLab component; `.N` = rebuild within the same month, a published tag is never overwritten) and
-scripts version (`aci-1.2.0`). The GitLab component checks the version (`ACI_EXPECTED_VERSION`); on
+scripts version (`aci-1.3.0`). The GitLab component checks the version (`ACI_EXPECTED_VERSION`); on
 Jenkins, the `ciToolsImage` pipeline parameter (default in `jenkins-shared-library/vars/ansibleCollectionPipeline.groovy`)
 decides which `aci` every build runs.
 

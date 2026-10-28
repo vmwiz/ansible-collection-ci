@@ -60,7 +60,7 @@ main() {
 
   # 3) ansible-lint --profile=production (Galaxy dependencies already installed next to it: --offline)
   (cd "$ACI_SRC" && ANSIBLE_COLLECTIONS_PATH=$ACI_TREE_BASE run ansible-lint --offline --profile=production \
-      --exclude dist --exclude reports --exclude tests/output "$@") || rc=1
+      --exclude tests/output "$@") || rc=1
 
   [ $rc -eq 0 ] || die "certification: at least one check failed (see $out)"
   log "static certification: OK; sanity to run on: $(cert_sanity_cores)"

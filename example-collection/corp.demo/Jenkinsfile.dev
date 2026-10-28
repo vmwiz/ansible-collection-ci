@@ -1,6 +1,7 @@
 // Development Jenkinsfile: tests the ansible-ci library straight from its git repository, WITHOUT
 // registering it in Manage Jenkins > Global Pipeline Libraries.
-// The pipeline expects the collection at the ROOT of the job repository: use it in a repository that
+// The pipeline expects the collection at the ROOT of the job repository (it is checked out into the src/
+// sub-directory of the workspace, reports/ and dist/ beside it): use it in a repository that
 // contains only this collection, renamed to `Jenkinsfile` (tools/export-collection.sh does both).
 //
 // Which library version is loaded: the part after '@' in `identifier`:

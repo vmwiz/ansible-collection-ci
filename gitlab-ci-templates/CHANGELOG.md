@@ -5,6 +5,23 @@ SemVer releases, tags `x.y.z` (format required by the CI/CD catalog), aligned wi
 * minor: new input (with a default), new job disabled by default, compatible tool update;
 * major: input renamed/removed, changed default (e.g. ansible-core matrix), major version of `aci`.
 
+## 1.3.0 - 2026-10-28
+
+* Workspace layout: every job adds a `src/` git worktree of the pipeline commit (`before_script`) and runs
+  `aci` with `ACI_SRC=src`, `ACI_REPORTS=reports`, `ACI_DIST=dist`: the tools only see `src/`, the reports
+  and the tarball stay under `CI_PROJECT_DIR` (artifact names unchanged). Fixes the SARIF and
+  certification reports shipped in the tarball (and linted by galaxy-importer) when `build_ignore` lacked
+  `reports`/`dist`. The jobs now define `before_script`: a `default: before_script` of the including
+  project no longer applies to them.
+* Inputs unchanged. Default `runner-image` `ci-tools-image:2026.10.2`, `ACI_EXPECTED_VERSION` 1.3.0
+  (`aci` 1.3.0: `ACI_SRC` defaults to `./src` when `./src/galaxy.yml` exists, else the current
+  directory; `ACI_REPORTS`/`ACI_DIST` default to the siblings of `src/`, else to `/tmp/aci-<uid>/<name>/`
+  (local runs, shown by `aci info`); any of them inside `ACI_SRC` is refused. The `--exclude reports/dist`
+  options of ansible-lint, yamllint, the security scanner and Spotter are removed (they never see them).
+  `ci-scripts/tests/layout.sh` poisons `reports/` and `dist/` and checks that lint, docs, security-scan
+  and build ignore them.)
+* `tests/validate.sh`: every job has the `src/` worktree and the layout variables.
+
 ## 1.2.0 - 2026-10-28
 
 * Same order as the Jenkins library, each block only if the previous one passed (`needs`): static analysis

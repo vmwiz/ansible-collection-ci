@@ -9,7 +9,7 @@ set -uo pipefail
 here=$(cd "$(dirname "$0")" && pwd); root=$(cd "$here/../.." && pwd)
 G=$root/gitlab-ci-templates; T=$G/templates/ansible-collection/template.yml
 inputs=$1 ctx=$2 jobs=$3
-OUT=${OUT:-/tmp/gl/out}; W=${W:-/tmp/gl/work}; IMAGE=${IMAGE:-localhost/corp/ci-tools-image:2026.10.1}
+OUT=${OUT:-/tmp/gl/out}; W=${W:-/tmp/gl/work}; IMAGE=${IMAGE:-localhost/corp/ci-tools-image:2026.10.2}
 REPO=${REPO:-/tmp/gl/repos/corp-demo.git}
 mkdir -p "$OUT" "$W" /tmp/gl/cache; chmod 0777 /tmp/gl/cache
 run_one() {

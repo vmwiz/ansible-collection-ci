@@ -23,7 +23,7 @@ import groovy.transform.Field
     imageMirror         : 'nexus.corp.local:8444',                                   // Docker proxy of quay.io
     spotterEndpoint     : '',                                                        // private Spotter API; empty = Spotter skipped
     spotterCacert       : '/etc/pki/tls/certs/ca-bundle.crt',                        // CA bundle for the Spotter API
-    ciToolsImage        : 'nexus.corp.local:8443/corp/ci-tools-image:2026.10.1',       // image of the 'runner' container (= aci version)
+    ciToolsImage        : 'nexus.corp.local:8443/corp/ci-tools-image:2026.10.2',       // image of the 'runner' container (= aci version)
     builderLabel        : 'ansible-builder',                                         // Jenkins label of the Podman VMs
     spotterCredentialsId: 'spotter-api-token',                                       // Jenkins credential ID (Secret text)
     galaxyCredentialsId : 'nexus-galaxy-hosted-token',                               // Jenkins credential ID (Secret text)
@@ -45,8 +45,13 @@ def call(Map config = [:]) {
             timeout(time: 90, unit: 'MINUTES')
             timestamps()
             ansiColor('xterm')
+            // workspace = src/ (collection, the only tree any tool sees) + reports/ + dist/ (siblings)
+            checkoutToSubdirectory('src')
         }
         environment {   // names read by aci
+            ACI_SRC                = 'src'
+            ACI_REPORTS            = 'reports'
+            ACI_DIST               = 'dist'
             ACI_GALAXY_URL         = "${cfg.galaxyUrl}"
             ACI_GALAXY_PUBLISH_URL = "${cfg.galaxyPublishUrl}"
             ACI_PYPI_ENDPOINT      = "${cfg.pypiEndpoint}"
@@ -97,7 +102,7 @@ def call(Map config = [:]) {
                     stages {
                         stage('sanity') { steps { aci 'sanity', 'reports/sanity-*/junit/*.xml' } }
                         stage('units') {
-                            when { expression { fileExists('tests/unit') } }
+                            when { expression { fileExists('src/tests/unit') } }
                             steps { aci 'units', 'reports/units-*/junit/*.xml' }
                         }
                     }
@@ -109,13 +114,13 @@ def call(Map config = [:]) {
                 parallel {
                     stage('Integration') {
                         agent { label "${cfg.builderLabel}" }
-                        when { expression { fileExists('tests/integration/targets') } }
+                        when { expression { fileExists('src/tests/integration/targets') } }
                         environment { ACI_TEST_MODE = 'docker' }
                         steps { aci 'integration', 'reports/integration-*/junit/*.xml' }
                     }
                     stage('Molecule') {
                         agent { label "${cfg.builderLabel}" }
-                        when { expression { fileExists('extensions/molecule') } }
+                        when { expression { fileExists('src/extensions/molecule') } }
                         steps { aci 'molecule' }
                     }
                 }

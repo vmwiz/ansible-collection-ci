@@ -24,7 +24,7 @@ set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd); repo=$(cd "$here/../.." && pwd)
 W=${W:-/tmp/jk}; OUT=${OUT:-$W/out}
 JENKINS_IMAGE=${JENKINS_IMAGE:-docker.io/jenkins/jenkins:2.580.1-jdk21}
-CI_TOOLS_IMAGE=${CI_TOOLS_IMAGE:-localhost/corp/ci-tools-image:2026.10.1}
+CI_TOOLS_IMAGE=${CI_TOOLS_IMAGE:-localhost/corp/ci-tools-image:2026.10.2}
 podman rm -f jenkins runner-1 fake-galaxy >/dev/null 2>&1 || true
 sudo pkill -f "agent.jar.*-name builder-1" 2>/dev/null || true
 sudo rm -rf "$W"; mkdir -p "$W/repos" "$W/src" "$W/shared" "$W/builder" "$W/galaxy" "$OUT"; chmod 777 "$W/shared" "$W/galaxy"

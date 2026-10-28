@@ -14,6 +14,7 @@ case $cmd in
   --version|version) echo "aci $ACI_VERSION"; exit 0 ;;
 esac
 [ -f "$ACI_LIB/cmd/$cmd.sh" ] || die "unknown command '$cmd' (aci help)"
+aci_check_layout
 log "aci $ACI_VERSION: $cmd"
 # GitLab component / image: expected scripts version (same major required, minor drift reported)
 if [ -n "${ACI_EXPECTED_VERSION:-}" ] && [ "$ACI_EXPECTED_VERSION" != "$ACI_VERSION" ]; then
